@@ -2,6 +2,7 @@
 #SBATCH --cpus-per-task=8
 
 . .env/openenv.sh
+ export TF_CPP_MIN_LOG_LEVEL=3
 
 ulimit -Ss 128000
 
