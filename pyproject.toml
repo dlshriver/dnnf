@@ -1,0 +1,32 @@
+[build-system]
+requires = ["flit"]
+build-backend = "flit.buildapi"
+
+[tool.flit.metadata]
+module = "falsify"
+author = "David Shriver"
+author-email = "dls2fc@virginia.edu"
+home-page = "https://github.com/dlshriver/falsify"
+description-file = "README.md"
+requires = [
+    "dnnv",
+    "numpy==1.18",
+    "onnx==1.6",
+    "torch==1.4",
+    "torchvision==0.5"
+]
+requires-python = ">=3.6"
+
+[tool.flit.metadata.requires-extra]
+dev = ["black==19.10b0", "mypy"]
+doc = ["sphinx==2.4"]
+test = ["coverage==5.0"]
+
+[tool.flit.scripts]
+falsify = "falsify.__main__:__main__"
+
+[tool.coverage.run]
+branch = true
+concurrency = ["multiprocessing", "thread"]
+parallel = true
+source = ["falsify"]
