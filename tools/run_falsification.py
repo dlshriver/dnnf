@@ -70,20 +70,39 @@ def wait(pool, timeout=float("inf")):
     start_t = time.time()
     while timeout < 0 or time.time() - start_t < timeout:
         for index, task in enumerate(pool):
-            while select.select([task.stderr], [], [], 0)[0]:
-                stderr_line = task.stderr.readline()
-                if stderr_line == "":
-                    break
-                task.stderr_lines.append(stderr_line)
-                print(f"{{{task.network}.{task.prop} (STDERR)}}: {stderr_line.strip()}")
+            has_output = [True, True]
+            while any(has_output):
+                for (i, name, stream, lines) in [
+                    (0, "STDOUT", task.stdout, task.stdout_lines),
+                    (1, "STDERR", task.stderr, task.stderr_lines),
+                ]:
+                    line = stream.readline()
+                    if line == "":
+                        has_output[i] = False
+                        continue
+                    has_output[i] = True
+                    lines.append(line)
+                    print(f"{{{task.network}.{task.prop} ({name})}}: {line.strip()}")
             if task.poll() is not None:
-                task.stdout_lines.extend(task.stdout.readlines())
-                task.stderr_lines.extend(task.stderr.readlines())
+                stdout_lines = task.stdout.readlines()
+                for line in stdout_lines:
+                    print(f"{{{task.network}.{task.prop} (STDOUT)}}: {line.strip()}")
+                task.stdout_lines.extend(stdout_lines)
+                stderr_lines = task.stderr.readlines()
+                for line in stderr_lines:
+                    print(f"{{{task.network}.{task.prop} (STDERR)}}: {line.strip()}")
+                task.stderr_lines.extend(stderr_lines)
                 return pool.pop(index)
     for index, task in enumerate(pool):
         if task.poll() is not None:
-            task.stdout_lines.extend(task.stdout.readlines())
-            task.stderr_lines.extend(task.stderr.readlines())
+            stdout_lines = task.stdout.readlines()
+            for line in stdout_lines:
+                print(f"{{{task.network}.{task.prop} (STDOUT)}}: {line.strip()}")
+            task.stdout_lines.extend(stdout_lines)
+            stderr_lines = task.stderr.readlines()
+            for line in stderr_lines:
+                print(f"{{{task.network}.{task.prop} (STDERR)}}: {line.strip()}")
+            task.stderr_lines.extend(stderr_lines)
             return pool.pop(index)
     raise RuntimeError("Timeout while waiting for task completion.")
 
@@ -100,7 +119,6 @@ def parse_verification_output(stdout_lines, stderr_lines):
                     at_result = True
                 elif at_result and ("  result:" in line) or ("  time:" in line):
                     result_lines.append(line.strip())
-            print("DEBUG<<", stdout_lines)
             result = result_lines[0].split(maxsplit=1)[-1]
             time = float(result_lines[1].split()[-1])
         except Exception as e:
@@ -163,7 +181,11 @@ def main(args, extra_args):
         print(run_args)
 
         proc = sp.Popen(
-            shlex.split(run_args), stdout=sp.PIPE, stderr=sp.PIPE, encoding="utf8"
+            shlex.split(run_args),
+            stdout=sp.PIPE,
+            stderr=sp.PIPE,
+            encoding="utf8",
+            bufsize=1,
         )
         proc.network = network
         proc.prop = prop
