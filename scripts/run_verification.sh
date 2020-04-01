@@ -2,8 +2,8 @@
 #SBATCH --cpus-per-task=8
 
 module load gcc
-. .env/openenv.sh
- export TF_CPP_MIN_LOG_LEVEL=3
+. .env.d/openenv.sh
+export TF_CPP_MIN_LOG_LEVEL=3
 
 ulimit -Ss 128000
 
