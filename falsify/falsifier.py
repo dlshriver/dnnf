@@ -82,7 +82,6 @@ def pgd(model: FalsificationModel, n_steps=100, **kwargs):
         # x.requires_grad = True
         # x = model.step(x, model(x, relu_approx=True))
         if x is None:
-            print("TEST1", step_i)
             break
 
 
