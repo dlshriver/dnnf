@@ -70,19 +70,6 @@ def wait(pool, timeout=float("inf")):
     start_t = time.time()
     while timeout < 0 or time.time() - start_t < timeout:
         for index, task in enumerate(pool):
-            has_output = [True, True]
-            while any(has_output):
-                for (i, name, stream, lines) in [
-                    (0, "STDOUT", task.stdout, task.stdout_lines),
-                    (1, "STDERR", task.stderr, task.stderr_lines),
-                ]:
-                    line = stream.readline()
-                    if line == "":
-                        has_output[i] = False
-                        continue
-                    has_output[i] = True
-                    lines.append(line)
-                    print(f"{{{task.network}.{task.prop} ({name})}}: {line.strip()}")
             if task.poll() is not None:
                 stdout_lines = task.stdout.readlines()
                 for line in stdout_lines:
@@ -93,6 +80,18 @@ def wait(pool, timeout=float("inf")):
                     print(f"{{{task.network}.{task.prop} (STDERR)}}: {line.strip()}")
                 task.stderr_lines.extend(stderr_lines)
                 return pool.pop(index)
+            for (name, stream, lines) in [
+                ("STDOUT", task.stdout, task.stdout_lines),
+                ("STDERR", task.stderr, task.stderr_lines),
+            ]:
+                ready, _, _ = select.select([stream], [], [], 0)
+                if not ready:
+                    continue
+                line = stream.readline()
+                if line == "":
+                    continue
+                lines.append(line)
+                print(f"{{{task.network}.{task.prop} ({name})}}: {line.strip()}")
     for index, task in enumerate(pool):
         if task.poll() is not None:
             stdout_lines = task.stdout.readlines()
@@ -109,8 +108,9 @@ def wait(pool, timeout=float("inf")):
 
 def parse_verification_output(stdout_lines, stderr_lines):
     time = None
-    result_line = stderr_lines[-1]
-    if "finished successfully" in result_line:
+    resmonitor_lines = [line for line in stderr_lines if "(resmonitor)" in line]
+    resmonitor_result_line = resmonitor_lines[-1]
+    if "finished successfully" in resmonitor_result_line:
         try:
             result_lines = []
             at_result = False
@@ -123,12 +123,12 @@ def parse_verification_output(stdout_lines, stderr_lines):
             time = float(result_lines[1].split()[-1])
         except Exception as e:
             result = f"VerificationRunnerError({type(e).__name__})"
-    elif "Out of Memory" in result_line:
+    elif "Out of Memory" in resmonitor_result_line:
         result = "outofmemory"
-        time = float(stderr_lines[-2].split()[-3][:-2])
-    elif "Timeout" in result_line:
+        time = float(resmonitor_lines[-2].split()[-3][:-2])
+    elif "Timeout" in resmonitor_result_line:
         result = "timeout"
-        time = float(stderr_lines[-2].split()[-3][:-2])
+        time = float(resmonitor_lines[-2].split()[-3][:-2])
     else:
         result = "!"
     print("  result:", result)
