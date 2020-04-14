@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import multiprocessing as mp
 import numpy as np
 import time
@@ -6,22 +7,25 @@ import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dnnv.properties import Expression
 from functools import partial
-from typing import Dict, Union
+from typing import Dict, List, Union
 
 from .extractor import PropertyExtractor, HalfspacePolytope, HyperRectangle
 from .model import FalsificationModel
 
 
 def falsify(phi: Expression, n_proc: int = 1, **kwargs):
+    logger = logging.getLogger(__name__)
     counter_example = None
+    method = pgd
+    if kwargs.get("tensorfuzz", False):
+        logger.info("Using tensorfuzz backend.")
+        method = tensorfuzz
     extractor = PropertyExtractor(HyperRectangle, HalfspacePolytope)
     executor = ProcessPoolExecutor
     executor_params = {"mp_context": mp.get_context("spawn")}
-    # executor = ThreadPoolExecutor
-    # executor_params = {}
     with executor(max_workers=n_proc, **executor_params) as pool:
         tasks = [
-            falsify_model(pgd, FalsificationModel(prop), executor=pool, **kwargs)
+            falsify_model(method, FalsificationModel(prop), executor=pool, **kwargs)
             for i, prop in enumerate(extractor.extract_from(~phi))
         ]
         counter_example = asyncio.run(wait_for_first(tasks, **kwargs))
@@ -66,13 +70,14 @@ async def falsify_model(
 
 
 def pgd(model: FalsificationModel, n_steps=100, **kwargs):
-    # model.model.to("cuda")
+    if kwargs.get("cuda", False):
+        model.model.to("cuda")
     x = model.sample()
     for step_i in range(n_steps):
         x = model.project_input(x)
         x.requires_grad = True
         y = model(x)
-        if y.argmax() != 0:
+        if any(y[0, 0] <= y[0, i] for i in range(1, y.shape[1])):
             counter_example = x.cpu().detach().numpy()
             if model.validate(counter_example):
                 print("FOUND", step_i)
@@ -141,3 +146,68 @@ def foolbox(model: FalsificationModel, n_steps=100, **kwargs):
         print("  measured label:", model(torch.from_numpy(counter_example)))
         print("  reported distance:", adv.distance)
         print("  measured distance:", np.abs(counter_example - foolbox_x).max())
+
+
+def tensorfuzz(model: FalsificationModel, n_steps=100, **kwargs):
+    import select
+    import shlex
+    import subprocess as sp
+    import tempfile
+    import torch
+
+    logger = logging.getLogger(__name__)
+
+    shape, dtype = model.input_details[0]
+    lb = model.input_constraint.lower_bound.reshape(shape).astype(dtype)
+    ub = model.input_constraint.upper_bound.reshape(shape).astype(dtype)
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        logger.debug("Using temporary directory: %s", tmpdir)
+
+        model_filename = f"{tmpdir}/model.onnx"
+        lb_filename = f"{tmpdir}/lb.npy"
+        ub_filename = f"{tmpdir}/ub.npy"
+
+        dummy_x = torch.from_numpy(lb)
+        torch.onnx.export(
+            model.model,
+            dummy_x,
+            model_filename,
+            input_names=["input"],
+            dynamic_axes={"input": [0]},
+        )
+        np.save(lb_filename, lb[0])
+        np.save(ub_filename, ub[0])
+
+        cmd = f"tensorfuzz.sh --model={model_filename} --lb={lb_filename} --ub={ub_filename} --label=0"
+        logger.debug("Running: %s", cmd)
+
+        proc = sp.Popen(
+            shlex.split(cmd), stdout=sp.PIPE, stderr=sp.PIPE, encoding="utf8"
+        )
+        stdout_lines: List[str] = []
+        stderr_lines: List[str] = []
+        while proc.poll() is None:
+            for (name, stream, lines) in [
+                ("STDOUT", proc.stdout, stdout_lines),
+                ("STDERR", proc.stderr, stderr_lines),
+            ]:
+                ready, _, _ = select.select([stream], [], [], 0)
+                if not ready:
+                    continue
+                line = stream.readline()
+                if line == "":
+                    continue
+                lines.append(line)
+                print(f"{{TENSORFUZZ ({name})}}: {line.strip()}")
+        for line in proc.stdout.readlines():
+            print(f"{{TENSORFUZZ (STDOUT)}}: {line.strip()}")
+        stdout_lines.extend(stdout_lines)
+        for line in proc.stderr.readlines():
+            print(f"{{TENSORFUZZ (STDERR)}}: {line.strip()}")
+        stderr_lines.extend(stderr_lines)
+        if "Fuzzing succeeded" in "\n".join(stderr_lines):
+            counter_example = np.load(f"{tmpdir}/cex.npy")[None].astype(dtype)
+            if model.validate(counter_example):
+                print("FOUND")
+                return counter_example

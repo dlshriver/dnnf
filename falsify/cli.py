@@ -89,5 +89,11 @@ def parse_args():
         help="The maximum number of random starts per sub-property",
     )
 
+    parser.add_argument("--cuda", action="store_true", help="use cuda")
+
+    parser.add_argument(
+        "--tensorfuzz", action="store_true", help="use the tensorfuzz backend"
+    )
+
     known_args, extra_args = parser.parse_known_args()
     return known_args, extra_args
