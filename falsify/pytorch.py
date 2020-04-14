@@ -273,6 +273,15 @@ class PytorchConverter(OperationVisitor):
 
         return softmax
 
+    def visit_Tanh(self, operation: operations.Tanh):
+        self.generic_visit(operation)
+
+        def tanh(operation_graph):
+            x = operation_graph[operation.x]
+            return torch.tanh(x)
+
+        return tanh
+
     def visit_Transpose(self, operation: operations.Transpose):
         self.generic_visit(operation)
 
