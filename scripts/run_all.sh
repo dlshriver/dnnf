@@ -4,11 +4,13 @@ timeout=3600
 
 run_falsifier () {
     artifact=$2
-    extra=$3
+    backend=$3
+    extra=$4
     options="-T $timeout --prop.epsilon=$extra"
-    echo "sbatch --reservation=dls2fc_21 -e logs/$artifact$extra.falsify.%J.err -o logs/$artifact$extra.falsify.%J.out ./scripts/run_falsification.sh results/$artifact$extra.falsify.csv artifacts/${artifact}_benchmark/ $options"
+    name=$artifact$extra.falsify.$backend
+    echo "sbatch --reservation=dls2fc_21 -e logs/$name.%J.err -o logs/$name.%J.out ./scripts/run_falsification.sh results/$name.csv artifacts/${artifact}_benchmark/ $options --$backend"
     for (( i=1; i<=$1; i++ )); do
-        sbatch --reservation=dls2fc_21 -e logs/$artifact$extra.falsify.%J.err -o logs/$artifact$extra.falsify.%J.out ./scripts/run_falsification.sh results/$artifact$extra.falsify.csv artifacts/${artifact}_benchmark/ $options
+        sbatch --reservation=dls2fc_21 -e logs/$name.%J.err -o logs/$name.%J.out ./scripts/run_falsification.sh results/$name.csv artifacts/${artifact}_benchmark/ $options --$backend
     done
 }
 
@@ -16,26 +18,28 @@ run_verifier () {
     artifact=$2
     verifier=$3
     extra=$4
+    name=$artifact$extra.$verifier
     options="-T $timeout --eran.domain=deepzono --prop.epsilon=$extra"
-    echo "sbatch --reservation=dls2fc_21 -e logs/$artifact$extra.$verifier.%J.err -o logs/$artifact$extra.$verifier.%J.out ./scripts/run_verification.sh results/$artifact$extra.$verifier.csv artifacts/${artifact}_benchmark/ $verifier $options"
+    echo "sbatch --reservation=dls2fc_21 -e logs/$name.%J.err -o logs/$name.%J.out ./scripts/run_verification.sh results/$name.csv artifacts/${artifact}_benchmark/ $verifier $options"
     for (( i=1; i<=$1; i++ )); do
-        sbatch --reservation=dls2fc_21 -e logs/$artifact$extra.$verifier.%J.err -o logs/$artifact$extra.$verifier.%J.out ./scripts/run_verification.sh results/$artifact$extra.$verifier.csv artifacts/${artifact}_benchmark/ $verifier $options
+        sbatch --reservation=dls2fc_21 -e logs/$name.%J.err -o logs/$name.%J.out ./scripts/run_verification.sh results/$name.csv artifacts/${artifact}_benchmark/ $verifier $options
     done;
 }
 
 # ACAS
-# run_falsifier 24 "acas"
+run_falsifier 24 "acas" "pgd"
+run_falsifier 24 "acas" "tensorfuzz"
 
-# for verifier in neurify eran planet reluplex; do
-#     run_verifier 24 "acas" $verifier
-# done
+run_verifier 24 "acas" "neurify"
 run_verifier 24 "acas" "eran"
+run_verifier 24 "acas" "planet"
+run_verifier 24 "acas" "reluplex"
 
 # ERAN-MNIST
 for epsilon in 0.120 0.100 0.080 0.060 0.040 0.030 0.025 0.020 0.015 0.010 0.005; do
-    run_falsifier 8 "eranmnist" $epsilon
+    run_falsifier 8 "eranmnist" "pgd" $epsilon
+    run_falsifier 8 "eranmnist" "tensorfuzz" $epsilon
 
-    for verifier in neurify eran; do
-        run_verifier 8 "eranmnist" $verifier $epsilon
-    done
+    run_verifier 8 "eranmnist" "neurify" $epsilon
+    run_verifier 8 "eranmnist" "eran" $epsilon
 done
