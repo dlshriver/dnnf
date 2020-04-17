@@ -68,7 +68,13 @@ def lock(filename: Path, *args, **kwargs):
 
 def wait(pool, timeout=float("inf")):
     start_t = time.time()
+    last_time = -1
     while timeout < 0 or time.time() - start_t < timeout:
+        if int(time.time() - start_t) % 2 == 0 and last_time != int(
+            time.time() - start_t
+        ):
+            last_time = int(time.time() - start_t)
+            print(time.time() - start_t)
         for index, task in enumerate(pool):
             if task.poll() is not None:
                 stdout_lines = task.stdout.readlines()
@@ -80,18 +86,24 @@ def wait(pool, timeout=float("inf")):
                     print(f"{{{task.network}.{task.prop} (STDERR)}}: {line.strip()}")
                 task.stderr_lines.extend(stderr_lines)
                 return pool.pop(index)
-            for (name, stream, lines) in [
-                ("STDOUT", task.stdout, task.stdout_lines),
-                ("STDERR", task.stderr, task.stderr_lines),
+            for (name, stream, lines, buffer) in [
+                # ("STDOUT", task.stdout, task.stdout_lines, task.stdout_buffer),
+                ("STDERR", task.stderr, task.stderr_lines, task.stderr_buffer),
             ]:
-                ready, _, _ = select.select([stream], [], [], 0)
-                if not ready:
-                    continue
-                line = stream.readline()
-                if line == "":
-                    continue
-                lines.append(line)
-                print(f"{{{task.network}.{task.prop} ({name})}}: {line.strip()}")
+                while True:
+                    ready, _, _ = select.select([stream], [], [], 0)
+                    if not ready:
+                        break
+                    byte = stream.read(1)
+                    if not byte:
+                        break
+                    buffer[0] += byte
+                # line = stream.readline()
+                buffered_lines = buffer[0].split("\n")
+                buffer[0] = buffered_lines[-1]
+                for line in buffered_lines[:-1]:
+                    lines.append(line)
+                    print(f"{{{task.network}.{task.prop} ({name})}}: {line.strip()}")
     for index, task in enumerate(pool):
         if task.poll() is not None:
             stdout_lines = task.stdout.readlines()
@@ -189,6 +201,8 @@ def main(args, extra_args):
         )
         proc.network = network
         proc.prop = prop
+        proc.stdout_buffer = [""]
+        proc.stderr_buffer = [""]
         proc.stdout_lines = []
         proc.stderr_lines = []
         pool.append(proc)
