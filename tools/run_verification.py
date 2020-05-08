@@ -177,14 +177,17 @@ def main(args, extra_args):
             df.to_csv(args.results_csv, index=False)
 
         property_filename = (
-            property_df[property_df["property_id"] == prop]["property_filename"]
+            property_df[
+                (property_df["property_id"] == prop)
+                & (property_df["network_filename"] == network)
+            ]["property_filename"]
             .unique()
             .item()
         )
-        resmonitor = "python ./tools/resmonitor.py"
+        resmonitor = f"python {Path(__file__).absolute().parent}/resmonitor.py"
         resmonitor_args = f"{resmonitor} -M {args.memory} -T {args.time}"
         extra_args_str = " ".join(extra_args)
-        verifier_args = f"python -m dnnv {args.artifact_path / network} {args.artifact_path / property_filename} --{args.verifier} {extra_args_str}"
+        verifier_args = f"python -m dnnv {network} {property_filename} --{args.verifier} {extra_args_str}"
         run_args = f"{resmonitor_args} {verifier_args}"
         print(run_args)
 
@@ -194,6 +197,7 @@ def main(args, extra_args):
             stderr=sp.PIPE,
             encoding="utf8",
             bufsize=1,
+            cwd=args.artifact_path,
         )
         proc.network = network
         proc.prop = prop
