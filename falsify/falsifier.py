@@ -148,14 +148,20 @@ def cleverhans(
 
     logger = logging.getLogger(__name__)
 
-    lb = model.input_lower_bound.flatten().cpu().float().numpy()
-    ub = model.input_upper_bound.flatten().cpu().float().numpy()
+    input_shape = tuple(model.input_lower_bound.shape)
+    lb = model.input_lower_bound.cpu().float().numpy()
+    ub = model.input_upper_bound.cpu().float().numpy()
     ranges = ub - lb
 
-    cleverhans_x = np.zeros(len(lb), dtype=np.float32)[None] + 0.5
-    if model.validate(cleverhans_x @ np.diag(ranges) + lb):
+    def normalize(x):
+        x_norm = x * ranges + lb
+        assert x_norm.shape == x.shape
+        return x_norm
+
+    cleverhans_x = np.zeros(input_shape, dtype=np.float32) + 0.5
+    if model.validate(normalize(cleverhans_x)):
         logger.info("FOUND COUNTEREXAMPLE immediately")
-        return cleverhans_x
+        return normalize(cleverhans_x)
     g = tf.Graph()
     sess = tf.Session(graph=g)
     with g.as_default():
@@ -171,17 +177,16 @@ def cleverhans(
         model_tf = model.as_tf()
 
         def callable_model(x):
-            x_normalized = x @ np.diag(ranges) + lb
-            return model_tf(x_normalized)
+            return model_tf(normalize(x))
 
         attack_method = getattr(cleverhans_attacks, variant)
         attack = attack_method(
             (CallableModelWrapper(callable_model, "logits")), sess=sess
         )
-        x_placeholder = tf.placeholder(tf.float32, shape=tuple(cleverhans_x.shape))
+        x_placeholder = tf.placeholder(tf.float32, shape=input_shape)
         adv_x = attack.generate(x_placeholder, **parameters)
         adv_x_npy_ = sess.run(adv_x, feed_dict={x_placeholder: cleverhans_x})
-        adv_x_npy = adv_x_npy_ @ np.diag(ranges) + lb
+        adv_x_npy = normalize(adv_x_npy_)
         if model.validate(adv_x_npy):
             logger.info("FOUND COUNTEREXAMPLE")
             return adv_x_npy
@@ -202,15 +207,18 @@ def foolbox(
     if kwargs.get("cuda", False):
         device = torch.device("cuda")
 
-    lb = model.input_lower_bound.flatten()
-    ub = model.input_upper_bound.flatten()
-    num_inputs = len(lb)
+    lb = model.input_lower_bound
+    ub = model.input_upper_bound
     ranges = ub - lb
-    input_normalizer = torch.nn.Linear(num_inputs, num_inputs)
-    input_normalizer.weight.data = torch.diag(ranges)
-    input_normalizer.bias.data = lb.clone()
-    pytorch_model = torch.nn.Sequential(input_normalizer, model.model).eval().to(device)
-    finput = torch.zeros_like(lb)[None] + 0.5
+
+    class Normalize(torch.nn.Module):
+        def forward(self, x):
+            return x * ranges + lb
+
+    normalizer = Normalize()
+
+    pytorch_model = torch.nn.Sequential(normalizer, model.model).eval().to(device)
+    finput = torch.zeros_like(lb) + 0.5
     flabel = torch.zeros(1, dtype=np.long, device=device)
     fmodel = fb.PyTorchModel(
         model.model.eval().to(device), bounds=(0, 1), device=device
@@ -225,7 +233,7 @@ def foolbox(
     for succ, adv, epsilon in zip(success, advs, epsilons):
         if not succ:
             continue
-        counter_example = input_normalizer(adv).cpu().detach().numpy()
+        counter_example = normalizer(adv).cpu().detach().numpy()
         if model.validate(counter_example):
             logger.info("FOUND COUNTEREXAMPLE")
             return counter_example
