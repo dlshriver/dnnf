@@ -1,5 +1,6 @@
 import argparse
 
+from collections import defaultdict
 from pathlib import Path
 
 from . import __version__
@@ -43,6 +44,77 @@ class AddNetwork(argparse.Action):
         self.networks[name] = network_path
         items = (getattr(namespace, self.dest) or {}).copy()
         items[name] = network_path
+        setattr(namespace, self.dest, items)
+
+
+def float_type(parser, name, x):
+    if len(x) > 1:
+        raise parser.error(f"Too many values for parameter {name}.")
+    return float(x[0])
+
+
+def int_type(parser, name, x):
+    if len(x) > 1:
+        raise parser.error(f"Too many values for parameter {name}.")
+    return int(x[0])
+
+
+def str_type(parser, name, x):
+    if len(x) > 1:
+        raise parser.error(f"Too many values for parameter {name}.")
+    return str(x[0])
+
+
+def bool_type(parser, name, x):
+    if len(x) > 1:
+        raise parser.error(f"Too many values for parameter {name}.")
+    if len(x) == 1:
+        return x[0].lower() in ["true", "1"]
+    return True
+
+
+def literal_type(parser, name, x):
+    import ast
+
+    if len(x) > 1:
+        raise parser.error(f"Too many values for parameter {name}.")
+    try:
+        return ast.literal_eval(x[0])
+    except:
+        return x[0]
+
+
+def array_type(parser, name, x):
+    import ast
+    import numpy as np
+
+    if len(x) > 1:
+        raise parser.error(f"Too many values for parameter {name}.")
+    lst = ast.literal_eval(x[0])
+    if not isinstance(lst, list):
+        raise parser.error(f"Parameter {name} requires a list type value.")
+    return np.asarray(lst)
+
+
+class SetParameter(argparse.Action):
+    def __init__(self, option_strings, dest, **kwargs):
+        super().__init__(option_strings=option_strings, dest=dest, **kwargs)
+        self.parameters = defaultdict(lambda: {})
+        self.parameter_type = defaultdict(lambda: defaultdict(lambda: literal_type))
+        # distillation parameters
+        self.parameter_type["pgd"]["alpha"] = float_type
+        self.parameter_type["cleverhans.LBFGS"]["y_target"] = array_type
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        if len(values) < 2:
+            raise argparse.ArgumentTypeError("Too few arguments to --set option")
+        method, name, *val = values
+        if name in self.parameters:
+            raise parser.error(f"Multiple values specified for parameter {name}")
+        value = self.parameter_type[method][name](parser, name, val)
+        self.parameters[method][name] = value
+        items = (getattr(namespace, self.dest) or defaultdict(lambda: {})).copy()
+        items[method][name] = value
         setattr(namespace, self.dest, items)
 
 
@@ -92,7 +164,20 @@ def parse_args():
     parser.add_argument("--cuda", action="store_true", help="use cuda")
 
     parser.add_argument(
-        "--tensorfuzz", action="store_true", help="use the tensorfuzz backend"
+        "--backend",
+        type=str,
+        nargs="+",
+        default=["pgd"],
+        help="the falsification backends to use",
+    )
+    parser.add_argument(
+        "--set",
+        nargs=3,
+        default=defaultdict(dict),
+        dest="parameters",
+        action=SetParameter,
+        metavar=("METHOD", "PARAM", "VALUE"),
+        help="set parameters for the falsification backend",
     )
 
     known_args, extra_args = parser.parse_known_args()

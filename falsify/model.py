@@ -52,9 +52,7 @@ class FalsificationModel:
         return self.op_graph.as_tf()
 
     def loss(self, y):
-        # print(y.shape)
-        return -F.cross_entropy(y, torch.Tensor([1]).long().to(y.device))
-        # return y[0, 0]
+        # return -F.cross_entropy(y, torch.Tensor([1]).long().to(y.device))
         # return F.cross_entropy(y, torch.Tensor([0]).long().to(y.device))
         return F.cross_entropy(
             y, torch.Tensor([0]).long().to(y.device)
@@ -82,18 +80,15 @@ class FalsificationModel:
         )
         return x
 
-    def step(self, x, y):
+    def step(self, x, y, alpha=0.1):
         loss = self.loss(y)
         loss.backward()
-        # print(y, loss.item(), x.grad.abs().max().item())
         if x.grad.abs().max().item() < 1e-12:
             return
         lb = self.input_lower_bound
         ub = self.input_upper_bound
-        alpha = 0.02  # TODO: make alpha a parameter
         epsilon = (ub - lb) / 2
         x = x + F.normalize(x.grad) * epsilon * alpha
-        # x = x + x.grad * alpha
         return x
 
     def validate(self, x):

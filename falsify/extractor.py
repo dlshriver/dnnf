@@ -137,7 +137,7 @@ class HalfspacePolytope(Constraint):
         x_flat = np.concatenate([x_.flatten() for x_ in x])
         for hs in self.halfspaces:
             t = sum(c * x_flat[i] for c, i in zip(hs.coefficients, hs.indices))
-            if (t - hs.b) > 0:
+            if (t - hs.b) > 1e-6:
                 return False
         return True
 

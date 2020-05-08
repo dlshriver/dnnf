@@ -34,6 +34,10 @@ def _parse_args():
     )
 
     parser.add_argument(
+        "-pf", "--properties_filename", type=str, default="properties.csv"
+    )
+
+    parser.add_argument(
         "-n",
         "--ntasks",
         type=int,
@@ -154,7 +158,7 @@ def main(args, extra_args):
             with open(args.results_csv, "w+") as f:
                 f.write("Network,Property,Result,Time\n")
     network_property_pairs = set()
-    property_df = pd.read_csv(args.artifact_path / "properties.csv")
+    property_df = pd.read_csv(args.artifact_path / args.properties_filename)
     for row in property_df.itertuples():
         network_property_pairs.add((row.network_filename, row.property_id))
 

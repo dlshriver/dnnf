@@ -4,30 +4,72 @@ import multiprocessing as mp
 import numpy as np
 import time
 
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor
 from dnnv.properties import Expression
 from functools import partial
-from typing import Dict, List, Union
+from typing import Any, Dict, List, Union
 
 from .extractor import PropertyExtractor, HalfspacePolytope, HyperRectangle
 from .model import FalsificationModel
 
 
-def falsify(phi: Expression, n_proc: int = 1, **kwargs):
+def _init_logging():
+    from .cli import parse_args
+    from .utils import initialize_logging, set_random_seed
+
+    args, extra_args = parse_args()
+    set_random_seed(args.seed)
+    initialize_logging(
+        __package__, verbose=args.verbose, quiet=args.quiet, debug=args.debug
+    )
+
+
+def falsify(
+    phi: Expression,
+    backend: Union[str, List[str]] = "pgd",
+    n_proc: int = 1,
+    n_starts=-1,
+    **kwargs,
+):
     logger = logging.getLogger(__name__)
+    if isinstance(backend, str):
+        backend = [backend]
+
     counter_example = None
-    method = pgd
-    if kwargs.get("tensorfuzz", False):
-        logger.info("Using tensorfuzz backend.")
-        method = tensorfuzz
     extractor = PropertyExtractor(HyperRectangle, HalfspacePolytope)
     executor = ProcessPoolExecutor
     executor_params = {"mp_context": mp.get_context("spawn")}
-    with executor(max_workers=n_proc, **executor_params) as pool:
-        tasks = [
-            falsify_model(method, FalsificationModel(prop), executor=pool, **kwargs)
-            for i, prop in enumerate(extractor.extract_from(~phi))
-        ]
+    # from concurrent.futures import ThreadPoolExecutor
+
+    # executor = ThreadPoolExecutor
+    # executor_params = {}
+    with executor(
+        max_workers=n_proc, initializer=_init_logging, **executor_params
+    ) as pool:
+        tasks = []
+        backend_parameters = kwargs.pop("parameters")
+        for backend_method in backend:
+            method_name, *variant = backend_method.split(".", maxsplit=1)
+            if method_name not in globals():
+                raise RuntimeError(f"Unknown falsification method: {method_name}")
+            if variant:
+                kwargs["variant"] = variant[0]
+            logger.info("Using %s backend.", backend_method)
+            method = globals()[method_name]
+            parameters = backend_parameters[backend_method]
+            method_n_starts = parameters.pop("n_starts", n_starts)
+            for i, prop in enumerate(extractor.extract_from(~phi)):
+                tasks.append(
+                    falsify_model(
+                        method,
+                        FalsificationModel(prop),
+                        parameters=parameters,
+                        n_starts=method_n_starts,
+                        executor=pool,
+                        _TASK_ID=f"{backend_method}_{i}",
+                        **kwargs,
+                    )
+                )
         counter_example = asyncio.run(wait_for_first(tasks, **kwargs))
     return counter_example
 
@@ -48,6 +90,9 @@ async def wait_for_first(tasks, sequential=False, **kwargs):
 async def falsify_model(
     method, model: FalsificationModel, executor=None, n_starts=-1, **kwargs
 ):
+    logger = logging.getLogger(__name__)
+    _TASK_ID = kwargs.get("_TASK_ID", "")
+
     start_i = 0
     loop = asyncio.get_event_loop()
     while n_starts < 0 or start_i < n_starts:
@@ -55,21 +100,21 @@ async def falsify_model(
             executor, partial(method, model, **kwargs)
         )
         if counter_example is not None:
-            print(f"FALSIFIED restart: {start_i}")
-            print(" ", model.prop.networks)
-            print(f"  {model.prop.op_graph(counter_example)}")
-            lb = model.input_lower_bound.cpu().numpy()
-            ub = model.input_upper_bound.cpu().numpy()
-            center = (ub + lb) / 2
-            print(" ", abs(counter_example - center).max())
+            logger.info(f"FALSIFIED ({_TASK_ID}) at restart: {start_i}")
+            for network, result in zip(
+                model.prop.networks, model.prop.op_graph(counter_example)
+            ):
+                logger.debug("%s -> %s", network, result)
             return counter_example
         await asyncio.sleep(0)  # yield to other tasks
         start_i += 1
         if (start_i) % 10 == 0:
-            print("restart:", start_i)
+            logger.info("RESTART(%s): %d", _TASK_ID, start_i)
 
 
-def pgd(model: FalsificationModel, n_steps=100, **kwargs):
+def pgd(model: FalsificationModel, n_steps=50, **kwargs):
+    logger = logging.getLogger(__name__)
+
     if kwargs.get("cuda", False):
         model.model.to("cuda")
     x = model.sample()
@@ -80,7 +125,8 @@ def pgd(model: FalsificationModel, n_steps=100, **kwargs):
         if any(y[0, 0] <= y[0, i] for i in range(1, y.shape[1])):
             counter_example = x.cpu().detach().numpy()
             if model.validate(counter_example):
-                print("FOUND", step_i)
+                logger.info("FOUND COUNTEREXAMPLE")
+                logger.info("FALSIFIED at step %d", step_i)
                 return counter_example
         x = model.step(x, y)
         # x = x.detach()
@@ -90,62 +136,100 @@ def pgd(model: FalsificationModel, n_steps=100, **kwargs):
             break
 
 
-def cleverhans(model: FalsificationModel, n_steps=100, **kwargs):
-    import tensorflow as tf
-    from cleverhans.attacks import ProjectedGradientDescent
+def cleverhans(
+    model: FalsificationModel,
+    variant: str = "ProjectedGradientDescent",
+    parameters: Dict[str, Any] = None,
+    **kwargs,
+):
+    import tensorflow.compat.v1 as tf
+    import cleverhans.attacks as cleverhans_attacks
     from cleverhans.model import CallableModelWrapper
 
-    lb = model.input_lower_bound.cpu().numpy().astype(np.float32)
-    ub = model.input_upper_bound.cpu().numpy().astype(np.float32)
-    epsilon = (ub - lb) / 2
-    cleverhans_x = (ub + lb) / 2
-    if model.validate(cleverhans_x):
+    logger = logging.getLogger(__name__)
+
+    lb = model.input_lower_bound.flatten().cpu().float().numpy()
+    ub = model.input_upper_bound.flatten().cpu().float().numpy()
+    ranges = ub - lb
+
+    cleverhans_x = np.zeros(len(lb), dtype=np.float32)[None] + 0.5
+    if model.validate(cleverhans_x @ np.diag(ranges) + lb):
+        logger.info("FOUND COUNTEREXAMPLE immediately")
         return cleverhans_x
-    params = {
-        "eps": tf.convert_to_tensor(epsilon),
-        "eps_iter": tf.convert_to_tensor(epsilon / 2),
-        "clip_min": tf.convert_to_tensor(lb),
-        "clip_max": tf.convert_to_tensor(ub),
-    }
-    pgd = ProjectedGradientDescent(CallableModelWrapper(model.as_tf(), "logits"))
-    x_placeholder = tf.placeholder(tf.float32, shape=tuple(lb.shape))
-    adv_x = pgd.generate(x_placeholder, **params)
-    with tf.Session().as_default():
-        adv_x_ = adv_x.eval(feed_dict={x_placeholder: cleverhans_x})
-        if model.validate(adv_x_):
-            return adv_x_
+    g = tf.Graph()
+    sess = tf.Session(graph=g)
+    with g.as_default():
+        if parameters is None:
+            parameters = {}
+        if "clip_min" not in parameters:
+            parameters["clip_min"] = 0
+        if "clip_max" not in parameters:
+            parameters["clip_max"] = 1
+        for key, value in parameters.items():
+            if isinstance(value, np.ndarray):
+                parameters[key] = tf.convert_to_tensor(value)
+        model_tf = model.as_tf()
+
+        def callable_model(x):
+            x_normalized = x @ np.diag(ranges) + lb
+            return model_tf(x_normalized)
+
+        attack_method = getattr(cleverhans_attacks, variant)
+        attack = attack_method(
+            (CallableModelWrapper(callable_model, "logits")), sess=sess
+        )
+        x_placeholder = tf.placeholder(tf.float32, shape=tuple(cleverhans_x.shape))
+        adv_x = attack.generate(x_placeholder, **parameters)
+        adv_x_npy_ = sess.run(adv_x, feed_dict={x_placeholder: cleverhans_x})
+        adv_x_npy = adv_x_npy_ @ np.diag(ranges) + lb
+        if model.validate(adv_x_npy):
+            logger.info("FOUND COUNTEREXAMPLE")
+            return adv_x_npy
 
 
-def foolbox(model: FalsificationModel, n_steps=100, **kwargs):
-    import foolbox
+def foolbox(
+    model: FalsificationModel,
+    variant: str = "LinfPGD",
+    parameters: Dict[str, Any] = None,
+    **kwargs,
+):
+    import foolbox as fb
     import torch
 
-    # Currently there is no way to ensure that the search remains
-    # in the desired input region unless lower and upper bounds are
-    # the same for all input dimensions
-    lb = model.input_lower_bound.cpu().numpy().astype(np.float32)
-    ub = model.input_upper_bound.cpu().numpy().astype(np.float32)
-    foolbox_x = (ub + lb) / 2
-    y = model(model.sample())
-    foolbox_model = foolbox.models.PyTorchModel(
-        model.model.eval(),
-        bounds=(lb.min().item(), ub.max().item()),
-        num_classes=int(y.size(1)),
-        device="cpu",
+    logger = logging.getLogger(__name__)
+
+    device = torch.device("cpu")
+    if kwargs.get("cuda", False):
+        device = torch.device("cuda")
+
+    lb = model.input_lower_bound.flatten()
+    ub = model.input_upper_bound.flatten()
+    num_inputs = len(lb)
+    ranges = ub - lb
+    input_normalizer = torch.nn.Linear(num_inputs, num_inputs)
+    input_normalizer.weight.data = torch.diag(ranges)
+    input_normalizer.bias.data = lb.clone()
+    pytorch_model = torch.nn.Sequential(input_normalizer, model.model).eval().to(device)
+    finput = torch.zeros_like(lb)[None] + 0.5
+    flabel = torch.zeros(1, dtype=np.long, device=device)
+    fmodel = fb.PyTorchModel(
+        model.model.eval().to(device), bounds=(0, 1), device=device
     )
-    attack = foolbox.attacks.PGD(foolbox_model, distance=foolbox.distances.Linf)
-    adversarials = attack(foolbox_x, np.zeros(1, dtype=np.long), unpack=False)
-    for adv in adversarials:
-        if adv.perturbed is None:
+    epsilons = [0.5]
+
+    if parameters is None:
+        parameters = {}
+    attack = getattr(fb.attacks, variant)(**parameters)
+    _, advs, success = attack(fmodel, finput, flabel, epsilons=epsilons)
+
+    for succ, adv, epsilon in zip(success, advs, epsilons):
+        if not succ:
             continue
-        counter_example = adv.perturbed[None, :]
+        counter_example = input_normalizer(adv).cpu().detach().numpy()
         if model.validate(counter_example):
+            logger.info("FOUND COUNTEREXAMPLE")
             return counter_example
-        print("Adv Example")
-        print("  reported label:", adv.adversarial_class)
-        print("  measured label:", model(torch.from_numpy(counter_example)))
-        print("  reported distance:", adv.distance)
-        print("  measured distance:", np.abs(counter_example - foolbox_x).max())
+        logger.debug("Counter example could not be validated")
 
 
 def tensorfuzz(model: FalsificationModel, n_steps=100, **kwargs):
@@ -199,15 +283,15 @@ def tensorfuzz(model: FalsificationModel, n_steps=100, **kwargs):
                 if line == "":
                     continue
                 lines.append(line)
-                print(f"{{TENSORFUZZ ({name})}}: {line.strip()}")
+                logger.debug(f"{{TENSORFUZZ ({name})}}: {line.strip()}")
         for line in proc.stdout.readlines():
-            print(f"{{TENSORFUZZ (STDOUT)}}: {line.strip()}")
+            logger.debug(f"{{TENSORFUZZ (STDOUT)}}: {line.strip()}")
         stdout_lines.extend(stdout_lines)
         for line in proc.stderr.readlines():
-            print(f"{{TENSORFUZZ (STDERR)}}: {line.strip()}")
+            logger.debug(f"{{TENSORFUZZ (STDERR)}}: {line.strip()}")
         stderr_lines.extend(stderr_lines)
         if "Fuzzing succeeded" in "\n".join(stderr_lines):
             counter_example = np.load(f"{tmpdir}/cex.npy")[None].astype(dtype)
             if model.validate(counter_example):
-                print("FOUND")
+                logger.info("FOUND COUNTEREXAMPLE")
                 return counter_example
