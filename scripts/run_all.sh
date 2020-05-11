@@ -24,14 +24,16 @@ run_verifier() {
     shift
     artifact=$1
     shift
+    verifier=$1
+    shift
     variant=$1
     shift
     options="-T $timeout -v"
     name=$artifact.verify.$variant
     # options="-T $timeout --eran.domain=deepzono --prop.epsilon=$extra"
-    echo "sbatch --reservation=${resv} -e logs/${name}.%J.err -o logs/${name}.%J.out ./scripts/run_verification.sh results/${name}.csv artifacts/${artifact}_benchmark/ ${options} $@"
+    echo "sbatch --reservation=${resv} -e logs/${name}.%J.err -o logs/${name}.%J.out ./scripts/run_verification.sh results/${name}.csv artifacts/${artifact}_benchmark/ ${verifier} ${options} $@"
     for ((i = 1; i <= $njobs; i++)); do
-        sbatch --reservation=${resv} -e logs/${name}.%J.err -o logs/${name}.%J.out ./scripts/run_verification.sh results/${name}.csv artifacts/${artifact}_benchmark/ ${options} $@
+        sbatch --reservation=${resv} -e logs/${name}.%J.err -o logs/${name}.%J.out ./scripts/run_verification.sh results/${name}.csv artifacts/${artifact}_benchmark/ ${verifier} ${options} $@
     done
 }
 
@@ -45,8 +47,8 @@ run_falsifier $n $artifact "cleverhans_DeepFool" "--backend cleverhans.DeepFool 
 run_falsifier $n $artifact "cleverhans_BasicIterativeMethod_eps0.5" "--backend cleverhans.BasicIterativeMethod --set cleverhans.BasicIterativeMethod eps 0.5 --n_start 1"
 run_falsifier $n $artifact "cleverhans_FastGradientMethod_eps0.5" "--backend cleverhans.FastGradientMethod --set cleverhans.FastGradientMethod eps 0.5 --n_start 1"
 
-run_verifier $n $artifact "neurify" "neurify --neurify.max_thread=8"
-run_verifier $n $artifact "eran" "eran --eran.domain=deepzono"
+run_verifier $n $artifact "neurify" "neurify" "--neurify.max_thread=8"
+run_verifier $n $artifact "eran" "eran" "--eran.domain=deepzono"
 
 # Neurify-DAVE
 artifact="neurifydave"
@@ -59,8 +61,8 @@ for epsilon in 1 2 5 8 10; do
     run_falsifier $n $artifact "eps${epsilon}.cleverhans_BasicIterativeMethod_eps0.5" "--backend cleverhans.BasicIterativeMethod --set cleverhans.BasicIterativeMethod eps 0.5 --n_start 1 --prop.epsilon=${epsilon}"
     run_falsifier $n $artifact "eps${epsilon}.cleverhans_FastGradientMethod_eps0.5" "--backend cleverhans.FastGradientMethod --set cleverhans.FastGradientMethod eps 0.5 --n_start 1 --prop.epsilon=${epsilon}"
 
-    run_verifier $n $artifact "eps${epsilon}.neurify" "neurify --neurify.max_thread=8 --prop.epsilon=${epsilon}"
-    run_verifier $n $artifact "eps${epsilon}.eran" "eran --eran.domain=deepzono --prop.epsilon=${epsilon}"
+    run_verifier $n $artifact "neurify" "eps${epsilon}.neurify" "--neurify.max_thread=8 --prop.epsilon=${epsilon}"
+    run_verifier $n $artifact "eran" "eps${epsilon}.eran" "--eran.domain=deepzono --prop.epsilon=${epsilon}"
 
-    sleep 5
+    sleep 1
 done
