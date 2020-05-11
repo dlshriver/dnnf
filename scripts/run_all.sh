@@ -14,7 +14,7 @@ run_falsifier () {
     name=$artifact.falsify.$variant
     echo "sbatch --reservation=${resv} -e logs/${name}.%J.err -o logs/${name}.%J.out ./scripts/run_falsification.sh results/${name}.csv artifacts/${artifact}_benchmark/ ${options} $@"
     for (( i=1; i<=$njobs; i++ )); do
-        sbatch -x cortado10 --reservation=${resv} -e logs/${name}.%J.err -o logs/${name}.%J.out ./scripts/run_falsification.sh results/${name}.csv artifacts/${artifact}_benchmark/ ${options} $@
+        sbatch --reservation=${resv} -e logs/${name}.%J.err -o logs/${name}.%J.out ./scripts/run_falsification.sh results/${name}.csv artifacts/${artifact}_benchmark/ ${options} $@
     done
 }
 
@@ -30,7 +30,7 @@ run_verifier () {
     # options="-T $timeout --eran.domain=deepzono --prop.epsilon=$extra"
     echo "sbatch --reservation=${resv} -e logs/${name}.%J.err -o logs/${name}.%J.out ./scripts/run_verification.sh results/${name}.csv artifacts/${artifact}_benchmark/ ${verifier} ${options} $@"
     for (( i=1; i<=$njobs; i++ )); do
-        sbatch -x cortado10 --reservation=${resv} -e logs/${name}.%J.err -o logs/${name}.%J.out ./scripts/run_verification.sh results/${name}.csv artifacts/${artifact}_benchmark/ ${verifier} ${options} $@
+        sbatch --reservation=${resv} -e logs/${name}.%J.err -o logs/${name}.%J.out ./scripts/run_verification.sh results/${name}.csv artifacts/${artifact}_benchmark/ ${verifier} ${options} $@
     done;
 }
 
