@@ -1,45 +1,63 @@
 #!/bin/sh
 
 timeout=3600
+resv="dls2fc_1"
 
 run_falsifier () {
-    artifact=$2
-    backend=$3
-    extra=$4
-    options="-T $timeout --prop.epsilon=$extra"
-    name=$artifact$extra.falsify.$backend
-    echo "sbatch --reservation=dls2fc_21 -e logs/$name.%J.err -o logs/$name.%J.out ./scripts/run_falsification.sh results/$name.csv artifacts/${artifact}_benchmark/ $options --$backend"
-    for (( i=1; i<=$1; i++ )); do
-        sbatch --reservation=dls2fc_21 -e logs/$name.%J.err -o logs/$name.%J.out ./scripts/run_falsification.sh results/$name.csv artifacts/${artifact}_benchmark/ $options --$backend
+    njobs=$1
+    shift
+    artifact=$1
+    shift
+    variant=$1
+    shift
+    options="-T $timeout -v -p 8"
+    name=$artifact.falsify.$variant
+    echo "sbatch --reservation=${resv} -e logs/${name}.%J.err -o logs/${name}.%J.out ./scripts/run_falsification.sh results/${name}.csv artifacts/${artifact}_benchmark/ ${options} $@"
+    for (( i=1; i<=$njobs; i++ )); do
+        sbatch -x cortado10 --reservation=${resv} -e logs/${name}.%J.err -o logs/${name}.%J.out ./scripts/run_falsification.sh results/${name}.csv artifacts/${artifact}_benchmark/ ${options} $@
     done
 }
 
 run_verifier () {
-    artifact=$2
-    verifier=$3
-    extra=$4
-    name=$artifact$extra.$verifier
-    options="-T $timeout --eran.domain=deepzono --prop.epsilon=$extra"
-    echo "sbatch --reservation=dls2fc_21 -e logs/$name.%J.err -o logs/$name.%J.out ./scripts/run_verification.sh results/$name.csv artifacts/${artifact}_benchmark/ $verifier $options"
-    for (( i=1; i<=$1; i++ )); do
-        sbatch --reservation=dls2fc_21 -e logs/$name.%J.err -o logs/$name.%J.out ./scripts/run_verification.sh results/$name.csv artifacts/${artifact}_benchmark/ $verifier $options
+    njobs=$1
+    shift
+    artifact=$1
+    shift
+    verifier=$1
+    shift
+    options="-T $timeout -v"
+    name=$artifact.verify.$verifier
+    # options="-T $timeout --eran.domain=deepzono --prop.epsilon=$extra"
+    echo "sbatch --reservation=${resv} -e logs/${name}.%J.err -o logs/${name}.%J.out ./scripts/run_verification.sh results/${name}.csv artifacts/${artifact}_benchmark/ ${verifier} ${options} $@"
+    for (( i=1; i<=$njobs; i++ )); do
+        sbatch -x cortado10 --reservation=${resv} -e logs/${name}.%J.err -o logs/${name}.%J.out ./scripts/run_verification.sh results/${name}.csv artifacts/${artifact}_benchmark/ ${verifier} ${options} $@
     done;
 }
 
 # ACAS
-run_falsifier 24 "acas" "pgd"
-run_falsifier 24 "acas" "tensorfuzz"
+artifact="acas"
+run_falsifier 24 $artifact "cleverhans_LBFGS" "--backend cleverhans.LBFGS --n_start 1 --set cleverhans.LBFGS y_target \"[[-1.0, 0.0]]\""
+run_falsifier 24 $artifact "cleverhans_BasicIterativeMethod" "--backend cleverhans.BasicIterativeMethod --n_start 1"
+run_falsifier 24 $artifact "cleverhans_FastGradientMethod" "--backend cleverhans.FastGradientMethod --n_start 1"
+run_falsifier 24 $artifact "cleverhans_DeepFool" "--backend cleverhans.DeepFool --set cleverhans.DeepFool nb_candidate 2"
 
-run_verifier 24 "acas" "neurify"
-run_verifier 24 "acas" "eran"
-run_verifier 24 "acas" "planet"
-run_verifier 24 "acas" "reluplex"
+run_falsifier 24 $artifact "cleverhans_BasicIterativeMethod_eps0.5" "--backend cleverhans.BasicIterativeMethod --set cleverhans.BasicIterativeMethod eps 0.5 --n_start 1"
+run_falsifier 24 $artifact "cleverhans_FastGradientMethod_eps0.5" "--backend cleverhans.FastGradientMethod --set cleverhans.FastGradientMethod eps 0.5 --n_start 1"
 
-# ERAN-MNIST
-for epsilon in 0.120 0.100 0.080 0.060 0.040 0.030 0.025 0.020 0.015 0.010 0.005; do
-    run_falsifier 8 "eranmnist" "pgd" $epsilon
-    run_falsifier 8 "eranmnist" "tensorfuzz" $epsilon
+run_verifier 24 $artifact "neurify" "--neurify.max_thread=8"
+run_verifier 24 $artifact "eran" "--eran.domain=deepzono"
 
-    run_verifier 8 "eranmnist" "neurify" $epsilon
-    run_verifier 8 "eranmnist" "eran" $epsilon
+# Neurify-DAVE
+artifact="neurifydave"
+for epsilon in 1 2 5 8 10; do
+    run_falsifier 24 $artifact "eps${epsilon}.cleverhans_LBFGS" "--backend cleverhans.LBFGS --n_start 1 --set cleverhans.LBFGS y_target \"[[-1.0, 0.0]]\" --prop.epsilon=${epsilon}"
+    run_falsifier 24 $artifact "eps${epsilon}.cleverhans_BasicIterativeMethod" "--backend cleverhans.BasicIterativeMethod --n_start 1 --prop.epsilon=${epsilon}"
+    run_falsifier 24 $artifact "eps${epsilon}.cleverhans_FastGradientMethod" "--backend cleverhans.FastGradientMethod --n_start 1 --prop.epsilon=${epsilon}"
+    run_falsifier 24 $artifact "eps${epsilon}.cleverhans_DeepFool" "--backend cleverhans.DeepFool --set cleverhans.DeepFool nb_candidate 2 --prop.epsilon=${epsilon}"
+
+    run_falsifier 24 $artifact "eps${epsilon}.cleverhans_BasicIterativeMethod_eps0.5" "--backend cleverhans.BasicIterativeMethod --set cleverhans.BasicIterativeMethod eps 0.5 --n_start 1 --prop.epsilon=${epsilon}"
+    run_falsifier 24 $artifact "eps${epsilon}.cleverhans_FastGradientMethod_eps0.5" "--backend cleverhans.FastGradientMethod --set cleverhans.FastGradientMethod eps 0.5 --n_start 1 --prop.epsilon=${epsilon}"
+
+    run_verifier 24 $artifact "eps${epsilon}.neurify" "--neurify.max_thread=8 --prop.epsilon=${epsilon}"
+    run_verifier 24 $artifact "eps${epsilon}.eran" "--eran.domain=deepzono --prop.epsilon=${epsilon}"
 done
