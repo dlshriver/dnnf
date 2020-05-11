@@ -25,7 +25,7 @@ def memory_t(value):
 
 
 def _parse_args():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("results_csv", type=Path)
     parser.add_argument("artifact_path", type=Path)
 
@@ -78,7 +78,6 @@ def wait(pool, timeout=float("inf")):
             time.time() - start_t
         ):
             last_time = int(time.time() - start_t)
-            print(time.time() - start_t)
         for index, task in enumerate(pool):
             if task.poll() is not None:
                 stdout_lines = task.stdout.readlines()

@@ -1,6 +1,7 @@
 #!/bin/bash
 #SBATCH --cpus-per-task=8
 
+module load gcc
 . .env.d/openenv.sh
 export TF_CPP_MIN_LOG_LEVEL=3
 

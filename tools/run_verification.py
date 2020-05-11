@@ -25,7 +25,7 @@ def memory_t(value):
 
 
 def _parse_args():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(allow_abbrev=False)
     parser.add_argument("results_csv", type=Path)
     parser.add_argument("artifact_path", type=Path)
     parser.add_argument(
