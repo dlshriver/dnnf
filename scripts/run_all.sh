@@ -12,7 +12,7 @@ run_falsifier() {
     variant=$1
     shift
     options="-T $timeout -v -p 8"
-    name=$artifact.falsify.$variant
+    name=$artifact.$variant
     echo "sbatch --reservation=${resv} -e logs/${name}.%J.err -o logs/${name}.%J.out ./scripts/run_falsification.sh results/${name}.csv artifacts/${artifact}_benchmark/ ${options} $@"
     for ((i = 1; i <= $njobs; i++)); do
         sbatch --reservation=${resv} -e logs/${name}.%J.err -o logs/${name}.%J.out ./scripts/run_falsification.sh results/${name}.csv artifacts/${artifact}_benchmark/ ${options} $@
@@ -29,7 +29,7 @@ run_verifier() {
     variant=$1
     shift
     options="-T $timeout -v"
-    name=$artifact.verify.$variant
+    name=$artifact.$variant
     # options="-T $timeout --eran.domain=deepzono --prop.epsilon=$extra"
     echo "sbatch --reservation=${resv} -e logs/${name}.%J.err -o logs/${name}.%J.out ./scripts/run_verification.sh results/${name}.csv artifacts/${artifact}_benchmark/ ${verifier} ${options} $@"
     for ((i = 1; i <= $njobs; i++)); do
