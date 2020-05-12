@@ -306,12 +306,12 @@ class PropertyExtractor(ExpressionVisitor):
         self.visit(expression)
         prop = self.build_property()
         if prop.input_constraint.is_consistent == False:
-            self.logger.info(
+            self.logger.warning(
                 "Skipping conjunction with inconsistent input constraints."
             )
             return
         if prop.output_constraint.is_consistent == False:
-            self.logger.info(
+            self.logger.warning(
                 "Skipping conjunction with inconsistent output constraints."
             )
             return
