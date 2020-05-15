@@ -129,9 +129,6 @@ def pgd(model: FalsificationModel, n_steps=50, **kwargs):
                 logger.info("FALSIFIED at step %d", step_i)
                 return counter_example
         x = model.step(x, y)
-        # x = x.detach()
-        # x.requires_grad = True
-        # x = model.step(x, model(x, relu_approx=True))
         if x is None:
             break
 

@@ -293,11 +293,28 @@ def main(args: argparse.Namespace):
         )
         pytorch_model.eval().cuda()
         num_correct = 0.0
+        confusion = np.zeros((10, 10), dtype=np.long)
         for i, (x, y) in enumerate(data_loader):
             y_ = pytorch_model(x.cuda()).argmax(dim=-1).cpu()
             num_correct += (y == y_).sum().item()
+            for pair in zip(y.long().numpy(), y_.long().numpy()):
+                confusion[pair] += 1
         accuracy = num_correct / len(data_loader.dataset)
         print("Accuracy:", accuracy)
+        print(f"Confusion Matrix:\n{confusion}")
+        print(confusion.sum(), num_correct, len(data_loader.dataset))
+        print(
+            list(
+                zip(
+                    *np.unravel_index(
+                        torch.topk(torch.from_numpy(confusion).flatten(), 20)[1][
+                            10:
+                        ].numpy(),
+                        (10, 10),
+                    )
+                )
+            )
+        )
     if args.check_cifar_accuracy:
         data_loader = data.DataLoader(
             datasets.CIFAR10(

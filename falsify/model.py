@@ -92,6 +92,8 @@ class FalsificationModel:
         return x
 
     def validate(self, x):
+        if np.any(np.isnan(x)):
+            return False
         if not self.input_constraint.validate(x):
             return False
         y = self.prop.op_graph(x)
