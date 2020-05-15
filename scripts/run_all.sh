@@ -43,7 +43,6 @@ run_falsifier $n $artifact "cleverhans_LBFGS" "--backend cleverhans.LBFGS --n_st
 run_falsifier $n $artifact "cleverhans_BasicIterativeMethod" "--backend cleverhans.BasicIterativeMethod --n_start 1"
 run_falsifier $n $artifact "cleverhans_FastGradientMethod" "--backend cleverhans.FastGradientMethod --n_start 1"
 run_falsifier $n $artifact "cleverhans_DeepFool" "--backend cleverhans.DeepFool --set cleverhans.DeepFool nb_candidate 2 --n_start 1"
-run_falsifier $n $artifact "tensorfuzz" "--backend tensorfuzz"
 
 run_falsifier $n $artifact "cleverhans_BasicIterativeMethod_eps0.5" "--backend cleverhans.BasicIterativeMethod --set cleverhans.BasicIterativeMethod eps 0.5 --n_start 1"
 run_falsifier $n $artifact "cleverhans_FastGradientMethod_eps0.5" "--backend cleverhans.FastGradientMethod --set cleverhans.FastGradientMethod eps 0.5 --n_start 1"
@@ -104,4 +103,23 @@ for epsilon in 0.120 0.100 0.080 0.060 0.040 0.030 0.025 0.020 0.015 0.010 0.005
     run_verifier $n $artifact "eran" "eps${epsilon}.eran" "--eran.domain=deepzono --prop.epsilon=${epsilon} ${pf}"
 
     sleep 1
+done
+
+# run tensorfuzz last
+# ACAS
+artifact="acas"
+run_falsifier $n $artifact "tensorfuzz" "--backend tensorfuzz"
+# Output Relational
+artifact="outputrelational"
+run_falsifier $n $artifact "tensorfuzz" "--backend tensorfuzz"
+# Neurify-DAVE
+artifact="neurifydave"
+for epsilon in 1 2 5 8 10; do
+    run_falsifier $n $artifact "eps${epsilon}.tensorfuzz" "--backend tensorfuzz --prop.epsilon=${epsilon}"
+done
+# ERAN-MNIST
+artifact="eranmnist"
+pf="--properties_filename=properties_2convnets.csv"
+for epsilon in 0.120 0.100 0.080 0.060 0.040 0.030 0.025 0.020 0.015 0.010 0.005; do
+    run_falsifier $n $artifact "eps${epsilon}.tensorfuzz" "--backend tensorfuzz --prop.epsilon=${epsilon}"
 done
