@@ -324,7 +324,7 @@ class PropertyExtractor(ExpressionVisitor):
         self.logger.debug("DNF: %s", dnf_expression)
 
         for conjunction in dnf_expression:
-            self.logger.info("CONJUNCTION: %s", conjunction)
+            self.logger.debug("CONJUNCTION: %s", conjunction)
             yield from self._extract(conjunction)
 
     def visit(self, expression):
@@ -438,9 +438,9 @@ class PropertyExtractor(ExpressionVisitor):
                 "Invalid property: Comparing expressions with different shapes is not supported"
             )
 
-        constraints = (
-            []
-        )  # type: List[Tuple[List[Tuple[Variable, Tuple[int,...]]], List[float], float]]
+        constraints: List[
+            Tuple[List[Tuple[Variable, Tuple[int, ...]]], List[float], float]
+        ] = []
         for key, var, idx, coef in zip_dict_items(
             self.variables, self.indices, self.coefs
         ):

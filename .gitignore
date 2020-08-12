@@ -115,3 +115,4 @@ ENV/
 /data/
 /artifacts/
 /*.csv
+/results/

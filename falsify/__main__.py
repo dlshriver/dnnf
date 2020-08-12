@@ -32,14 +32,16 @@ def main(
     print()
 
     start_t = time.time()
-    counter_example = falsify(phi, **kwargs)
+    result = falsify(phi, **kwargs)
     end_t = time.time()
     print("falsify")
-    if counter_example is not None:
+    if result["violation"] is not None:
         print("  result: sat")
     else:
         print("  result: unknown")
-    print(f"  time: {end_t - start_t:.4f}")
+    falsification_time = result["time"]
+    print(f"  falsification time: {falsification_time:.4f}")
+    print(f"  total time: {end_t - start_t:.4f}")
 
 
 def __main__():

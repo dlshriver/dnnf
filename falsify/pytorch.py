@@ -102,6 +102,23 @@ class PytorchConverter(OperationVisitor):
 
         return atan
 
+    def visit_AveragePool(self, operation: operations.AveragePool):
+        self.generic_visit(operation)
+
+        def average_pool(operation_graph):
+            x = operation_graph[operation.x]
+            kernel_shape = tuple(operation.kernel_shape)
+            strides = tuple(operation.strides)
+            pad_top, pad_left, pad_bottom, pad_right = operation.pads
+            assert not operation.ceil_mode
+            assert not operation.count_include_pad
+
+            padded_x = F.pad(x, (pad_left, pad_right, pad_top, pad_bottom))
+            result = F.avg_pool2d(padded_x, kernel_shape, strides)
+            return result
+
+        return average_pool
+
     def visit_BatchNormalization(self, operation: operations.BatchNormalization):
         self.generic_visit(operation)
 
@@ -207,6 +224,9 @@ class PytorchConverter(OperationVisitor):
             kernel_shape = tuple(operation.kernel_shape)
             strides = tuple(operation.strides)
             pad_top, pad_left, pad_bottom, pad_right = operation.pads
+            assert not operation.ceil_mode
+            assert operation.dilations == 1
+            assert operation.storage_order == operation.ROW_MAJOR_STORAGE
 
             padded_x = F.pad(x, (pad_left, pad_right, pad_top, pad_bottom))
             result = F.max_pool2d(padded_x, kernel_shape, strides)

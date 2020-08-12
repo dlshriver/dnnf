@@ -9,7 +9,7 @@ import torch.utils.data as data
 
 from pathlib import Path
 from torchvision import datasets, transforms
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 ParamDict = Dict[str, np.ndarray]
 
@@ -30,6 +30,18 @@ class PytorchTranspose(nn.Module):
 
     def forward(self, x):
         return x.permute(self.dims)
+
+
+class PytorchParSum(nn.Module):
+    def __init__(self, par_sum_1, par_sum_2):
+        super().__init__()
+        self.par_sum_1 = nn.Sequential(*par_sum_1)
+        self.par_sum_2 = nn.Sequential(*par_sum_2)
+
+    def forward(self, x):
+        y_1 = self.par_sum_1(x)
+        y_2 = self.par_sum_2(x)
+        return y_1 + y_2
 
 
 def _parse_args():
@@ -145,23 +157,26 @@ def build_conv(
     else:
         assert len(k) == 2
         k_h, k_w = k
-    p = parameters.get("padding", np.array([0]))
-    if not p.shape or len(p) == 1:
-        p_top = p_left = p_bottom = p_right = p.item()
-    elif len(p) == 2:
-        p_top = p_bottom = p[0]
-        p_left = p_right = p[1]
-    else:
-        assert len(p) == 4, f"len(p) = {len(p)} != 4"
-        p_top, p_left, p_bottom, p_right = p
-    assert p_top == p_bottom, f"unsupported padding: {p}"
-    assert p_left == p_right, f"unsupported padding: {p}"
     s = parameters.get("stride", np.array([1, 1]))
     if not s.shape or len(s) == 1:
         s_h = s_w = s.item()
     else:
         assert len(s) == 2
         s_h, s_w = s
+    p = parameters.get("padding", np.array([0]))
+    assert not p.shape or len(p) == 1
+    if p.item() >= 1:
+        _, in_height, in_width = input_shape
+        out_height = round(np.ceil(float(in_height) / s_h).item())
+        out_width = round(np.ceil(float(in_width) / s_w).item())
+        pad_along_height = max((out_height - 1) * s_h + k_h - in_height, 0)
+        pad_along_width = max((out_width - 1) * s_w + k_w - in_width, 0)
+        p_top = pad_along_height // 2
+        p_bottom = pad_along_height - p_top
+        p_left = pad_along_width // 2
+        p_right = pad_along_width - p_left
+    else:
+        p_left = p_right = p_top = p_bottom = 0
 
     in_c, in_h, in_w = input_shape
     out_c = parameters["filters"].item()
@@ -169,15 +184,15 @@ def build_conv(
     out_w = int(np.floor(float(in_w - k_w + p_left + p_right) / s_w + 1))
     output_shape.extend([out_c, out_h, out_w])
 
+    pad_layer = nn.ZeroPad2d((p_left, p_right, p_top, p_bottom))
     conv_layer = nn.Conv2d(
-        input_shape[0],
-        output_shape[0],
-        (k_h, k_w),
-        (s_h, s_w),
-        (min(p_top, p_bottom), min(p_left, p_right)),
+        input_shape[0], output_shape[0], (k_h, k_w), (s_h, s_w), (0, 0),
     )
     conv_layer.weight.data = torch.from_numpy(weights).float().permute(3, 2, 0, 1)
     conv_layer.bias.data = torch.from_numpy(bias).float()
+
+    pad_conv_layer = nn.Sequential(pad_layer, conv_layer)
+
     activation_layer: Optional[nn.Module] = None
     if activation == "relu":
         activation_layer = nn.ReLU()
@@ -186,10 +201,10 @@ def build_conv(
     elif activation == "tanh":
         activation_layer = nn.Tanh()
     elif activation == "affine":
-        return conv_layer
+        return pad_conv_layer
     else:
         raise ValueError(f"Unknown activation type: {activation}")
-    return nn.Sequential(conv_layer, activation_layer)
+    return nn.Sequential(pad_conv_layer, activation_layer)
 
 
 def build_maxpool(
@@ -221,14 +236,41 @@ def build_maxpool(
     return pool_layer
 
 
+def build_parsum(
+    par_sum_1: List[nn.Module],
+    par_sum_2: List[nn.Module],
+    activation: str,
+    input_shape: List[int],
+    output_shape: List[int],
+) -> nn.Module:
+    parsum_layer = PytorchParSum(par_sum_1, par_sum_2)
+
+    activation_layer: Optional[nn.Module] = None
+    if activation == "relu":
+        activation_layer = nn.ReLU()
+    elif activation == "sigmoid":
+        activation_layer = nn.Sigmoid()
+    elif activation == "tanh":
+        activation_layer = nn.Tanh()
+    elif activation == "affine":
+        return parsum_layer
+    else:
+        raise ValueError(f"Unknown activation type: {activation}")
+    return nn.Sequential(parsum_layer, activation_layer)
+
+
 def main(args: argparse.Namespace):
     layers: List[nn.Module] = []
+    shapes: List[Tuple[Tuple[int, ...], Tuple[int, ...]]] = []
+    par_sum_start_index: Optional[int] = None
+    par_sum_1: Optional[List[nn.Module]] = None
+    par_sum_2: Optional[List[nn.Module]] = None
     last_layer: str = "input"
     input_shape: List[int] = args.input_shape
+    output_shape: List[int] = []
     with open(args.eran_network) as network_file:
         while True:
             line = network_file.readline().strip().lower()
-            output_shape: List[int] = []
             if line.startswith("normalize"):
                 if args.drop_normalization:
                     continue
@@ -239,7 +281,7 @@ def main(args: argparse.Namespace):
                 activation = line.strip(", \n").lower()
                 W = np.array(ast.literal_eval(network_file.readline().strip()))
                 b = np.array(ast.literal_eval(network_file.readline().strip()))
-                if last_layer in ("conv", "normalize"):
+                if last_layer in ("conv", "normalize", "parsumrelu", "parsumcomplete"):
                     c, h, w = input_shape
                     m = np.zeros((h * w * c, h * w * c))
                     column = 0
@@ -271,11 +313,45 @@ def main(args: argparse.Namespace):
                 parameters = parse_layer_params(network_file.readline().strip(", \n"))
                 layers.append(build_maxpool(parameters, input_shape, output_shape))
                 last_layer = "maxpool"
+            elif line == "parsum1":
+                assert par_sum_start_index is None
+                par_sum_start_index = len(layers)
+                last_layer = "parsum1"
+                continue
+            elif line == "parsum2":
+                assert par_sum_start_index is not None
+                par_sum_2 = layers[par_sum_start_index:]
+                layers = layers[:par_sum_start_index]
+                shapes = shapes[:par_sum_start_index]
+                output_shape = list(shapes[-1][1])
+                last_layer = "parsum2"
+            elif line == "parsumrelu" or line == "parsumcomplete":
+                assert par_sum_start_index is not None
+                assert par_sum_2 is not None
+                activation = "affine"
+                if line == "parsumrelu":
+                    activation = "relu"
+                output_shape = list(shapes[-1][1])
+                par_sum_1 = layers[par_sum_start_index:]
+                layers = layers[:par_sum_start_index]
+                shapes = shapes[:par_sum_start_index]
+                input_shape = list(shapes[-1][1])
+                layers.append(
+                    build_parsum(
+                        par_sum_2, par_sum_1, activation, input_shape, output_shape
+                    )
+                )
+                par_sum_1 = None
+                par_sum_2 = None
+                par_sum_start_index = None
+                last_layer = line
             elif line == "":
                 break
             else:
                 raise ValueError(f"Unknown layer type: {line}")
+            shapes.append((tuple(input_shape), tuple(output_shape)))
             input_shape = output_shape
+            output_shape = []
     pytorch_model = nn.Sequential(*layers)
     print(pytorch_model)
     dummy_input = torch.ones([1] + args.input_shape)
@@ -293,37 +369,27 @@ def main(args: argparse.Namespace):
         )
         pytorch_model.eval().cuda()
         num_correct = 0.0
-        confusion = np.zeros((10, 10), dtype=np.long)
         for i, (x, y) in enumerate(data_loader):
             y_ = pytorch_model(x.cuda()).argmax(dim=-1).cpu()
             num_correct += (y == y_).sum().item()
-            for pair in zip(y.long().numpy(), y_.long().numpy()):
-                confusion[pair] += 1
         accuracy = num_correct / len(data_loader.dataset)
         print("Accuracy:", accuracy)
-        print(f"Confusion Matrix:\n{confusion}")
-        print(confusion.sum(), num_correct, len(data_loader.dataset))
-        print(
-            list(
-                zip(
-                    *np.unravel_index(
-                        torch.topk(torch.from_numpy(confusion).flatten(), 20)[1][
-                            10:
-                        ].numpy(),
-                        (10, 10),
-                    )
-                )
-            )
-        )
     if args.check_cifar_accuracy:
         data_loader = data.DataLoader(
             datasets.CIFAR10(
                 "/tmp/data",
                 train=False,
                 download=True,
-                transform=transforms.Compose([transforms.ToTensor()]),
+                transform=transforms.Compose(
+                    [
+                        transforms.ToTensor(),
+                        # transforms.Normalize(
+                        #     mean=[0.4914, 0.4822, 0.4465], std=[0.2023, 0.1994, 0.201]
+                        # ),
+                    ]
+                ),
             ),
-            batch_size=1000,
+            batch_size=100,
         )
         pytorch_model.eval().cuda()
         num_correct = 0.0

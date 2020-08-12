@@ -8,7 +8,7 @@ mkdir -p lib
 
 if [ "$1" == "init" ]
 then
-    python3 -m venv .venv
+    python3.7 -m venv .venv
     . .venv/bin/activate
     python -m pip install --upgrade pip setuptools flit
     flit install --symlink --deps=develop

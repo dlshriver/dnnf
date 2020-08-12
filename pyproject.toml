@@ -13,7 +13,8 @@ requires = [
     "numpy==1.18",
     "onnx==1.6",
     "torch==1.4",
-    "torchvision==0.5"
+    "torchvision==0.5",
+    "tensorflow==1.15.3",
 ]
 requires-python = ">=3.6"
 

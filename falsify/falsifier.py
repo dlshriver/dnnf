@@ -4,10 +4,10 @@ import multiprocessing as mp
 import numpy as np
 import time
 
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dnnv.properties import Expression
 from functools import partial
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Type, Union
 
 from .extractor import PropertyExtractor, HalfspacePolytope, HyperRectangle
 from .model import FalsificationModel
@@ -37,41 +37,50 @@ def falsify(
 
     counter_example = None
     extractor = PropertyExtractor(HyperRectangle, HalfspacePolytope)
-    executor = ProcessPoolExecutor
-    executor_params = {"mp_context": mp.get_context("spawn")}
-    # from concurrent.futures import ThreadPoolExecutor
-
-    # executor = ThreadPoolExecutor
-    # executor_params = {}
-    with executor(
-        max_workers=n_proc, initializer=_init_logging, **executor_params
-    ) as pool:
-        tasks = []
-        backend_parameters = kwargs.pop("parameters")
-        for backend_method in backend:
-            method_name, *variant = backend_method.split(".", maxsplit=1)
-            if method_name not in globals():
-                raise RuntimeError(f"Unknown falsification method: {method_name}")
-            if variant:
-                kwargs["variant"] = variant[0]
-            logger.info("Using %s backend.", backend_method)
-            method = globals()[method_name]
-            parameters = backend_parameters[backend_method]
-            method_n_starts = parameters.pop("n_starts", n_starts)
-            for i, prop in enumerate(extractor.extract_from(~phi)):
-                tasks.append(
-                    falsify_model(
-                        method,
-                        FalsificationModel(prop),
-                        parameters=parameters,
-                        n_starts=method_n_starts,
-                        executor=pool,
-                        _TASK_ID=f"{backend_method}_{i}",
-                        **kwargs,
-                    )
+    if n_proc == 1:
+        executor: Union[
+            Type[ThreadPoolExecutor], Type[ProcessPoolExecutor]
+        ] = ThreadPoolExecutor
+        executor_params = {}
+    else:
+        executor = ProcessPoolExecutor
+        executor_params = {
+            "mp_context": mp.get_context("spawn"),
+            "initializer": _init_logging,
+        }
+    pool = executor(max_workers=n_proc, **executor_params)
+    tasks = []
+    backend_parameters = kwargs.pop("parameters")
+    for backend_method in backend:
+        method_name, *variant = backend_method.split(".", maxsplit=1)
+        if method_name not in globals():
+            raise RuntimeError(f"Unknown falsification method: {method_name}")
+        if variant:
+            kwargs["variant"] = variant[0]
+        logger.info("Using %s backend.", backend_method)
+        method = globals()[method_name]
+        parameters = backend_parameters[backend_method]
+        method_n_starts = parameters.pop("n_starts", n_starts)
+        for i, prop in enumerate(extractor.extract_from(~phi)):
+            logger.debug(f"subproblem {backend_method}_{i}")
+            tasks.append(
+                falsify_model(
+                    method,
+                    FalsificationModel(prop),
+                    parameters=parameters,
+                    n_starts=method_n_starts,
+                    executor=pool,
+                    _TASK_ID=f"{backend_method}_{i}",
+                    **kwargs,
                 )
-        counter_example = asyncio.run(wait_for_first(tasks, **kwargs))
-    return counter_example
+            )
+    logger.info("Starting Falsifier")
+    start_t = time.time()
+    counter_example = asyncio.run(wait_for_first(tasks, **kwargs))
+    end_t = time.time()
+    logger.info(f"falsification time: {end_t - start_t:.4f}")
+
+    return {"violation": counter_example, "time": end_t - start_t}
 
 
 async def wait_for_first(tasks, sequential=False, **kwargs):
@@ -108,7 +117,7 @@ async def falsify_model(
             return counter_example
         await asyncio.sleep(0)  # yield to other tasks
         start_i += 1
-        if (start_i) % 10 == 0:
+        if (start_i) % kwargs.get("restart_log_freq", 10) == 0:
             logger.info("RESTART(%s): %d", _TASK_ID, start_i)
 
 

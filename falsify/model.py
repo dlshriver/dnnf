@@ -11,7 +11,7 @@ class FalsificationModel:
         self.prop = prop
         self.input_constraint = prop.input_constraint
         self.output_constraint = prop.output_constraint
-        self.op_graph = prop.as_operation_graph().simplify()
+        self.op_graph = prop.as_operation_graph()
         self.input_details = self.op_graph.input_details
         self.model = self.as_pytorch()
         if not isinstance(self.input_constraint, HyperRectangle):
