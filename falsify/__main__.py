@@ -44,7 +44,7 @@ def main(
         print("  result: unknown")
     falsification_time = result["time"]
     print(f"  falsification time: {falsification_time:.4f}")
-    print(f"  total time: {end_t - start_t:.4f}")
+    print(f"  total time: {end_t - start_t:.4f}", flush=True)
 
     os.killpg(os.getpgrp(), 9)
 
