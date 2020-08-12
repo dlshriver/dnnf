@@ -97,19 +97,19 @@ for epsilon in 1 2 5 8 10; do
 done
 
 # Differncing
-# Neurify-DAVE
 artifact="diff"
 run_falsifier2 $n $artifact "global.cleverhans_LBFGS" "--properties_filename global_properties.csv --backend cleverhans.LBFGS --n_start 1 --set cleverhans.LBFGS y_target \"[[-1.0, 0.0]]\""
 run_falsifier2 $n $artifact "global.cleverhans_BasicIterativeMethod" "--properties_filename global_properties.csv --backend cleverhans.BasicIterativeMethod --n_start 1"
 run_falsifier2 $n $artifact "global.cleverhans_FastGradientMethod" "--properties_filename global_properties.csv --backend cleverhans.FastGradientMethod --n_start 1"
 run_falsifier2 $n $artifact "global.cleverhans_DeepFool" "--properties_filename global_properties.csv --backend cleverhans.DeepFool --set cleverhans.DeepFool nb_candidate 2 --n_start 1"
 run_falsifier2 $n $artifact "global.cleverhans_ProjectedGradientDescent" "--properties_filename global_properties.csv --backend cleverhans.ProjectedGradientDescent"
-for epsilon in 1 2 5 8 10; do
-    run_falsifier2 $n $artifact "local.eps${epsilon}.cleverhans_LBFGS" "--properties_filename local_properties.csv --backend cleverhans.LBFGS --n_start 1 --set cleverhans.LBFGS y_target \"[[-1.0, 0.0]]\" --prop.epsilon=${epsilon}"
-    run_falsifier2 $n $artifact "local.eps${epsilon}.cleverhans_BasicIterativeMethod" "--properties_filename local_properties.csv --backend cleverhans.BasicIterativeMethod --n_start 1 --prop.epsilon=${epsilon}"
-    run_falsifier2 $n $artifact "local.eps${epsilon}.cleverhans_FastGradientMethod" "--properties_filename local_properties.csv --backend cleverhans.FastGradientMethod --n_start 1 --prop.epsilon=${epsilon}"
-    run_falsifier2 $n $artifact "local.eps${epsilon}.cleverhans_DeepFool" "--properties_filename local_properties.csv --backend cleverhans.DeepFool --set cleverhans.DeepFool nb_candidate 2 --n_start 1 --prop.epsilon=${epsilon}"
-    run_falsifier2 $n $artifact "local.eps${epsilon}.cleverhans_ProjectedGradientDescent" "--properties_filename local_properties.csv --backend cleverhans.ProjectedGradientDescent --prop.epsilon=${epsilon}"
+for eps in 1 2 5 8 10; do
+    epsilon=$(python -c 'print($eps/255.0)')
+    run_falsifier2 $n $artifact "local.eps${eps}.cleverhans_LBFGS" "--properties_filename local_properties.csv --backend cleverhans.LBFGS --n_start 1 --set cleverhans.LBFGS y_target \"[[-1.0, 0.0]]\" --prop.epsilon=${epsilon}"
+    run_falsifier2 $n $artifact "local.eps${eps}.cleverhans_BasicIterativeMethod" "--properties_filename local_properties.csv --backend cleverhans.BasicIterativeMethod --n_start 1 --prop.epsilon=${epsilon}"
+    run_falsifier2 $n $artifact "local.eps${eps}.cleverhans_FastGradientMethod" "--properties_filename local_properties.csv --backend cleverhans.FastGradientMethod --n_start 1 --prop.epsilon=${epsilon}"
+    run_falsifier2 $n $artifact "local.eps${eps}.cleverhans_DeepFool" "--properties_filename local_properties.csv --backend cleverhans.DeepFool --set cleverhans.DeepFool nb_candidate 2 --n_start 1 --prop.epsilon=${epsilon}"
+    run_falsifier2 $n $artifact "local.eps${eps}.cleverhans_ProjectedGradientDescent" "--properties_filename local_properties.csv --backend cleverhans.ProjectedGradientDescent --prop.epsilon=${epsilon}"
 
     sleep 1
 done
@@ -129,6 +129,7 @@ done
 # Differencing
 artifact="diff"
 run_falsifier2 $n $artifact "global.tensorfuzz" "--properties_filename global_properties.csv --backend tensorfuzz"
-for epsilon in 1 2 5 8 10; do
-    run_falsifier2 $n $artifact "local.eps${epsilon}.tensorfuzz" "--properties_filename local_properties.csv --backend tensorfuzz --prop.epsilon=${epsilon}"
+for eps in 1 2 5 8 10; do
+    epsilon=$(python -c 'print($eps/255.0)')
+    run_falsifier2 $n $artifact "local.eps${eps}.tensorfuzz" "--properties_filename local_properties.csv --backend tensorfuzz --prop.epsilon=${epsilon}"
 done
