@@ -1,6 +1,7 @@
 """
 """
 import multiprocessing as mp
+import os
 import time
 
 from dnnv.nn import parse as parse_network
@@ -19,6 +20,8 @@ def main(
     extra_args: Optional[List[str]] = None,
     **kwargs,
 ):
+    os.setpgrp()
+
     phi = parse_property(property, args=extra_args)
     print("Falsifying:", phi)
     for name, network in networks.items():
@@ -42,6 +45,8 @@ def main(
     falsification_time = result["time"]
     print(f"  falsification time: {falsification_time:.4f}")
     print(f"  total time: {end_t - start_t:.4f}")
+
+    os.killpg(os.getpgrp(), 9)
 
 
 def __main__():
