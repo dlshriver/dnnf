@@ -10,13 +10,13 @@ home-page = "https://github.com/dlshriver/falsify"
 description-file = "README.md"
 requires = [
     "dnnv",
-    "numpy==1.18",
-    "onnx==1.6",
-    "torch==1.4",
-    "torchvision==0.5",
-    "tensorflow==1.15.3",
+    "numpy>=1.18,<1.20",
+    "onnx>=1.7,<1.8",
+    "torch>=1.6,<1.7",
+    "torchvision>=0.7,<0.8",
+    "tensorflow>=1.15,<2.0",
 ]
-requires-python = ">=3.6"
+requires-python = ">=3.7"
 
 [tool.flit.metadata.requires-extra]
 dev = ["black==19.10b0", "mypy"]
