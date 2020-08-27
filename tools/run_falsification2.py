@@ -73,12 +73,7 @@ def lock(filename: Path, *args, **kwargs):
 
 def wait(pool, timeout=float("inf")):
     start_t = time.time()
-    last_time = -1
     while timeout < 0 or time.time() - start_t < timeout:
-        if int(time.time() - start_t) % 2 == 0 and last_time != int(
-            time.time() - start_t
-        ):
-            last_time = int(time.time() - start_t)
         for index, task in enumerate(pool):
             if task.poll() is not None:
                 stdout_lines = task.stdout.readlines()
