@@ -91,6 +91,14 @@ Which will produce output similar to::
     result: sat
     time: 2.6067
 
+The available backends for falsification are:
+
+- ``cleverhans.LBFGS``, which also requires setting parameters ``--set cleverhans.LBFGS y_target "[[-1.0, 0.0]]"``
+- ``cleverhans.BasicIterativeMethod``
+- ``cleverhans.FastGradientMethod``
+- ``cleverhans.DeepFool``, which also requires setting parameters ``--set cleverhans.DeepFool nb_candidate 2``
+- ``cleverhans.ProjectedGradientDescent``
+
 Because we use DNNV_ to run verifiers, in order to run a verifier on a problem in one of the benchmarks, please read the instructions in the DNNV_ repository.
 As an example, to run the ERAN deepzono verifier on the same ACAS property and network as above, run::
 
