@@ -1,5 +1,6 @@
 #!/bin/bash
 #SBATCH --cpus-per-task=8
+#SBATCH --mem-per-cpu=64G
 
 module load gcc
 . .env.d/openenv.sh

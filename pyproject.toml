@@ -3,10 +3,10 @@ requires = ["flit"]
 build-backend = "flit.buildapi"
 
 [tool.flit.metadata]
-module = "falsify"
+module = "dnnf"
 author = "David Shriver"
 author-email = "dls2fc@virginia.edu"
-home-page = "https://github.com/dlshriver/falsify"
+home-page = "https://github.com/dlshriver/DNNF"
 description-file = "README.md"
 requires = [
     "dnnv",
@@ -24,10 +24,10 @@ doc = ["sphinx==2.4"]
 test = ["coverage==5.0"]
 
 [tool.flit.scripts]
-falsify = "falsify.__main__:__main__"
+dnnf = "dnnf.__main__:__main__"
 
 [tool.coverage.run]
 branch = true
 concurrency = ["multiprocessing", "thread"]
 parallel = true
-source = ["falsify"]
+source = ["dnnf"]

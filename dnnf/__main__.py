@@ -37,7 +37,7 @@ def main(
     start_t = time.time()
     result = falsify(phi, **kwargs)
     end_t = time.time()
-    print("falsify")
+    print("dnnf")
     if result["violation"] is not None:
         print("  result: sat")
     else:

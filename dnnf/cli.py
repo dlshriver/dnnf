@@ -120,8 +120,8 @@ class SetParameter(argparse.Action):
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="falsify - deep neural network falsification",
-        prog="falsify",
+        description="dnnf - deep neural network falsification",
+        prog="dnnf",
         formatter_class=HelpFormatter,
     )
     parser.add_argument("-V", "--version", action="version", version=__version__)

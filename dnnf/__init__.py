@@ -1,5 +1,5 @@
 """
-falsify - dnn property falsification
+dnnf - dnn property falsification
 """
 from .__version__ import __version__
 
