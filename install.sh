@@ -30,7 +30,7 @@ cd tensorfuzz
 git checkout a81df1b
 virtualenv -p python2.7 .venv
 . .venv/bin/activate
-pip install "tensorflow-gpu>=1.6,<1.7" "numpy>=1.16,<1.17" "absl-py>=0.11,<0.12" "scipy>=1.2,<1.3" "pyflann>=1.6,<1.7"
+pip install "tensorflow>=1.6,<1.7" "numpy>=1.16,<1.17" "absl-py>=0.11,<0.12" "scipy>=1.2,<1.3" "pyflann>=1.6,<1.7" "onnx>=1.6,<1.7"
 deactivate
 
 cd $PROJECT_DIR

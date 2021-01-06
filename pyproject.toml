@@ -7,7 +7,7 @@ module = "dnnf"
 author = "David Shriver"
 author-email = "dls2fc@virginia.edu"
 home-page = "https://github.com/dlshriver/DNNF"
-description-file = "README.md"
+description-file = "README.rst"
 requires = [
     "dnnv",
     "numpy>=1.18,<1.20",
