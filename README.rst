@@ -99,6 +99,8 @@ The available backends for falsification are:
 - ``cleverhans.DeepFool``, which also requires setting parameters ``--set cleverhans.DeepFool nb_candidate 2``
 - ``cleverhans.ProjectedGradientDescent``
 
+If a property uses parameters, then the parameter value can be set using ``--prop.PARAMETER=VALUE``, e.g., ``--prop.epsilon=1``, similar to DNNV_.
+
 Because we use DNNV_ to run verifiers, in order to run a verifier on a problem in one of the benchmarks, please read the instructions in the DNNV_ repository.
 As an example, to run the ERAN deepzono verifier on the same ACAS property and network as above, run::
 
