@@ -139,6 +139,7 @@ These files can be combined into a single csv by running the following in the ro
 
 Which will generate a file called ``results.csv`` in the current directory.
 This CSV file will have 6 columns:
+
 - ``Artifact`` specifies the artifact being run, e.g., ACAS Xu
 - ``Variant`` specifies a variant of the artifact, e.g., DroNet or MNIST for GHPR
 - ``ProblemId`` specifies an identifier for the problem being checked
