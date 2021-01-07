@@ -111,6 +111,8 @@ ENV/
 /bin/
 /include/
 /info/
+/lib/
+/libexec/
 /share/
 /data/
 /artifacts/
