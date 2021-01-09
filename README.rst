@@ -3,6 +3,8 @@ Reducing DNN Properties to Enable Falsification with Adversarial Attacks
 
 This repo accompanies the paper `Reducing DNN Properties to Enable Falsification with Adversarial Attacks <https://davidshriver.me/publications/>`_, and provides a tool for running falsification methods such as adversarial attacks on DNN property specifications specified using the DNNP_ language of DNNV_.
 
+Additional documentation can be found on `Read the Docs`_.
+
 Install
 -------
 
@@ -178,4 +180,4 @@ If any of the tools fail to run, these steps may help to identify and fix the is
 .. _DNNP: https://dnnv.readthedocs.io/en/tacas21/usage/specifying_properties.html
 .. _ONNX: https://onnx.ai
 .. _cleverhans: https://github.com/tensorflow/cleverhans
-
+.. _`Read the Docs`: https://dnnf.readthedocs.io/
