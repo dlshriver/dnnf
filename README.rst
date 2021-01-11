@@ -100,6 +100,7 @@ The available backends for falsification are:
 - ``cleverhans.FastGradientMethod``
 - ``cleverhans.DeepFool``, which also requires setting parameters ``--set cleverhans.DeepFool nb_candidate 2``
 - ``cleverhans.ProjectedGradientDescent``
+- ``tensorfuzz``
 
 If a property uses parameters, then the parameter value can be set using ``--prop.PARAMETER=VALUE``, e.g., ``--prop.epsilon=1``, similar to DNNV_.
 
