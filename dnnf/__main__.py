@@ -1,6 +1,7 @@
 """
 """
 import multiprocessing as mp
+import numpy as np
 import os
 import time
 
@@ -17,6 +18,7 @@ from .utils import initialize_logging, set_random_seed
 def main(
     property: Path,
     networks: Dict[str, Path],
+    save_violation: Optional[Path] = None,
     extra_args: Optional[List[str]] = None,
     **kwargs,
 ):
@@ -40,6 +42,8 @@ def main(
     print("dnnf")
     if result["violation"] is not None:
         print("  result: sat")
+        if save_violation is not None:
+            np.save(save_violation, result["violation"])
     else:
         print("  result: unknown")
     falsification_time = result["time"]

@@ -143,6 +143,14 @@ def parse_args():
     parser.add_argument("-N", "--network", action=AddNetwork, nargs=2, dest="networks")
 
     parser.add_argument(
+        "--save-violation",
+        metavar="PATH",
+        type=Path,
+        default=None,
+        help="the path to save a found violation",
+    )
+
+    parser.add_argument(
         "-p",
         "--processors",
         "--n_proc",
