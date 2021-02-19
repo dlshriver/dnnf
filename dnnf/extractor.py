@@ -380,12 +380,13 @@ class PropertyExtractor(ExpressionVisitor):
                     f" Executing networks with keyword arguments is not currently supported"
                 )
             for arg, d in zip(expression.args, input_details):
+                input_shape = tuple(int(x) if x > 0 else 1 for x in d.shape)
                 if arg in self._network_input_shapes:
-                    if self._network_input_shapes[arg] != tuple(d.shape):
+                    if self._network_input_shapes[arg] != input_shape:
                         raise self.extraction_error(
                             f"Invalid property: variable with multiple shapes: '{arg}'"
                         )
-                self._network_input_shapes[arg] = tuple(d.shape)
+                self._network_input_shapes[arg] = input_shape
                 self.visit(arg)
             shape = self._network_output_shapes[expression.function]
             self.variables[expression] = self.variables[expression.function]

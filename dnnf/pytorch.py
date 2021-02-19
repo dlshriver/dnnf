@@ -167,6 +167,15 @@ class PytorchConverter(OperationVisitor):
 
         return conv
 
+    def visit_Elu(self, operation: operations.Elu):
+        self.generic_visit(operation)
+
+        def elu(operation_graph):
+            x = operation_graph[operation.x]
+            return F.elu(x)
+
+        return elu
+
     def visit_Flatten(self, operation: operations.Flatten):
         self.generic_visit(operation)
 
@@ -225,7 +234,7 @@ class PytorchConverter(OperationVisitor):
             strides = tuple(operation.strides)
             pad_top, pad_left, pad_bottom, pad_right = operation.pads
             assert not operation.ceil_mode
-            assert operation.dilations == 1
+            assert np.all(operation.dilations == 1)
             assert operation.storage_order == operation.ROW_MAJOR_STORAGE
 
             padded_x = F.pad(x, (pad_left, pad_right, pad_top, pad_bottom))

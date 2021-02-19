@@ -13,6 +13,9 @@ class FalsificationModel:
         self.output_constraint = prop.output_constraint
         self.op_graph = prop.as_operation_graph()
         self.input_details = self.op_graph.input_details
+        self.input_shape = tuple(
+            int(d) if d > 0 else 1 for d in self.input_details[0].shape
+        )
         self.model = self.as_pytorch()
         if not isinstance(self.input_constraint, HyperRectangle):
             raise ValueError(
@@ -29,7 +32,7 @@ class FalsificationModel:
     def input_lower_bound(self):
         return (
             torch.from_numpy(self.input_constraint.lower_bound)
-            .reshape(self.input_details[0].shape)
+            .reshape(self.input_shape)
             .float()
             .to(self.model.device)
         )
@@ -38,7 +41,7 @@ class FalsificationModel:
     def input_upper_bound(self):
         return (
             torch.from_numpy(self.input_constraint.upper_bound)
-            .reshape(self.input_details[0].shape)
+            .reshape(self.input_shape)
             .float()
             .to(self.model.device)
         )
@@ -70,11 +73,7 @@ class FalsificationModel:
 
     def sample(self):
         x = (
-            torch.rand(
-                self.input_details[0].shape,
-                device=self.model.device,
-                dtype=torch.float32,
-            )
+            torch.rand(self.input_shape, device=self.model.device, dtype=torch.float32,)
             * (self.input_upper_bound - self.input_lower_bound)
             + self.input_lower_bound
         )
