@@ -45,7 +45,7 @@ Using Docker
 
 DNNF can be installed and run using docker as follows::
 
-  $ docker build -t dlshriver/dnnf
+  $ docker build . -t dlshriver/dnnf
   $ docker run -it dlshriver/dnnf
   (.venv) dnnf@hostname:~$ python -m dnnf -h
 
