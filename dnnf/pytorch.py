@@ -225,6 +225,15 @@ class PytorchConverter(OperationVisitor):
         self.inputs.append(operation)
         return lambda x: None
 
+    def visit_LeakyRelu(self, operation: operations.LeakyRelu):
+        self.generic_visit(operation)
+
+        def leakyrelu(operation_graph):
+            x = operation_graph[operation.x]
+            return F.leaky_relu(x, negative_slope=operation.alpha)
+
+        return leakyrelu
+
     def visit_MaxPool(self, operation: operations.MaxPool):
         self.generic_visit(operation)
 
@@ -273,6 +282,30 @@ class PytorchConverter(OperationVisitor):
             return x.reshape(tuple(shape))
 
         return reshape
+
+    def visit_Resize(self, operation: operations.Resize):
+        self.generic_visit(operation)
+
+        def resize(operation_graph):
+            x = operation_graph[operation.x]
+            assert operation.coordinate_transformation_mode in [
+                "asymmetric",
+                "tf_crop_and_resize",
+            ]
+            assert operation.mode == "nearest"
+            assert operation.nearest_mode == "floor"
+            assert operation.exclude_outside == 0
+            assert operation.roi.size == 0
+
+            scales = operation.scales
+            sizes = operation.sizes
+            if sizes.size == 0:
+                assert scales[0] == 1.0 and scales[1] == 1.0
+                sizes = (scales * x.shape).astype(int)
+            assert sizes.ndim == 1 and sizes.size == 4
+            return F.interpolate(x, size=sizes[2:].tolist(), mode=operation.mode)
+
+        return resize
 
     def visit_Shape(self, operation: operations.Shape):
         self.generic_visit(operation)
