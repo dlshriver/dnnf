@@ -18,13 +18,14 @@ from .utils import initialize_logging, set_random_seed
 def main(
     property: Path,
     networks: Dict[str, Path],
+    prop_format: Optional[str] = None,
     save_violation: Optional[Path] = None,
     extra_args: Optional[List[str]] = None,
     **kwargs,
 ):
     os.setpgrp()
 
-    phi = parse_property(property, args=extra_args)
+    phi = parse_property(property, format=prop_format, args=extra_args)
     print("Falsifying:", phi)
     for name, network in networks.items():
         dnn = parse_network(network)

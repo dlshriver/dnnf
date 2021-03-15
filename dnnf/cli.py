@@ -150,6 +150,15 @@ def parse_args():
         help="the path to save a found violation",
     )
 
+    prop_format_group = parser.add_mutually_exclusive_group()
+    prop_format_group.add_argument(
+        "--vnnlib",
+        action="store_const",
+        const="vnnlib",
+        dest="prop_format",
+        help="use the vnnlib property format",
+    )
+
     parser.add_argument(
         "-p",
         "--processors",
