@@ -15,6 +15,7 @@ requires = [
     "torch>=1.6,<1.7",
     "torchvision>=0.7,<0.8",
     "tensorflow>=1.15,<2.0",
+    "cleverhans==3.0.1",
 ]
 requires-python = ">=3.7"
 
