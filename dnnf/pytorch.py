@@ -167,6 +167,31 @@ class PytorchConverter(OperationVisitor):
 
         return conv
 
+    def visit_ConvTranspose(self, operation: operations.ConvTranspose):
+        self.generic_visit(operation)
+
+        def convtranspose(operation_graph):
+            x = operation_graph[operation.x]
+            weights = operation_graph[operation.w]
+            bias = operation_graph[operation.b]
+            pad_top, pad_left, pad_bottom, pad_right = operation.pads
+
+            padded_x = F.pad(
+                x, (pad_left, pad_right, pad_top, pad_bottom), "constant", 0
+            )
+            result = F.conv_transpose2d(
+                padded_x,
+                weights,
+                bias=bias,
+                stride=operation.strides,
+                output_padding=operation.output_padding,
+                groups=operation.groups,
+                dilations=operation.dilations,
+            )
+            return result
+
+        return convtranspose
+
     def visit_Elu(self, operation: operations.Elu):
         self.generic_visit(operation)
 
