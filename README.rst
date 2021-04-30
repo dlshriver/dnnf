@@ -1,7 +1,7 @@
 Reducing DNN Properties to Enable Falsification with Adversarial Attacks
 ========================================================================
 
-This repo accompanies the paper `Reducing DNN Properties to Enable Falsification with Adversarial Attacks <https://davidshriver.me/publications/>`_, and provides a tool for running falsification methods such as adversarial attacks on DNN property specifications specified using the DNNP_ language of DNNV_.
+This repo accompanies the paper `Reducing DNN Properties to Enable Falsification with Adversarial Attacks <https://davidshriver.me/files/publications/ICSE21-DNNF.pdf>`_, and provides a tool for running falsification methods such as adversarial attacks on DNN property specifications specified using the DNNP_ language of DNNV_. For an overview of our paper, check out our `video presentation <https://youtu.be/hcQFYUFwp_U>`_ of the paper.
 
 Additional documentation can be found on `Read the Docs`_.
 
