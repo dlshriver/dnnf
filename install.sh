@@ -43,7 +43,7 @@ python -m pip install --upgrade pip setuptools flit
 cd bin
 git clone https://github.com/dlshriver/DNNV.git
 cd DNNV
-git checkout 893ea6e
+git checkout ad53ae0
 flit install -s
 cd $PROJECT_DIR
 ./scripts/install_neurify.sh
