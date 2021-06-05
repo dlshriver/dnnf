@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+from __future__ import annotations
+
 import argparse
 import contextlib
 import datetime
@@ -10,6 +12,7 @@ import subprocess as sp
 import time
 
 from pathlib import Path
+from typing import Optional
 
 
 def memory_t(value):
@@ -97,7 +100,6 @@ def wait(pool, timeout=float("inf")):
                     if not byte:
                         break
                     buffer[0] += byte
-                # line = stream.readline()
                 buffered_lines = buffer[0].split("\n")
                 buffer[0] = buffered_lines[-1]
                 for line in buffered_lines[:-1]:
@@ -119,34 +121,61 @@ def wait(pool, timeout=float("inf")):
 
 def parse_verification_output(stdout_lines, stderr_lines):
     total_time: Optional[float] = None
+    falsification_time: Optional[float] = None
     resmonitor_lines = [line for line in stderr_lines if "(resmonitor)" in line]
     resmonitor_result_line = resmonitor_lines[-1]
+    falsification_start_time = [
+        datetime.datetime.strptime(" ".join(line.split()[1:3]), "%Y-%m-%d %H:%M:%S,%f")
+        for line in stdout_lines
+        if "Starting Falsifier" in line
+    ]
+    computed_falsification_time = None
+    if len(falsification_start_time) > 0:
+        final_time = datetime.datetime.strptime(
+            " ".join(resmonitor_lines[-1].split()[1:3]), "%Y-%m-%d %H:%M:%S,%f"
+        )
+        computed_falsification_time = (
+            final_time - falsification_start_time[0]
+        ).total_seconds()
     if "finished successfully" in resmonitor_result_line:
         try:
             result_lines = []
             at_result = False
             for line in stdout_lines:
-                if line.startswith("dnnv.verifiers"):
+                if line.strip() == "dnnf":
                     at_result = True
-                elif at_result and ("  result:" in line) or ("  time:" in line):
+                elif (
+                    at_result
+                    and ("  result:" in line)
+                    or ("  total time:" in line)
+                    or ("  falsification time:" in line)
+                ):
                     result_lines.append(line.strip())
             result = result_lines[0].split(maxsplit=1)[-1]
-            total_time = float(result_lines[1].split()[-1])
+            falsification_time = float(result_lines[1].split()[-1])
+            total_time = float(result_lines[2].split()[-1])
         except Exception as e:
             result = f"VerificationRunnerError({type(e).__name__})"
     elif "Out of Memory" in resmonitor_result_line:
         result = "outofmemory"
         total_time = float(resmonitor_lines[-2].split()[-3][:-2])
+        falsification_time = computed_falsification_time
     elif "Timeout" in resmonitor_result_line:
         result = "timeout"
         total_time = float(resmonitor_lines[-2].split()[-3][:-2])
+        falsification_time = computed_falsification_time
     else:
         result = "!"
     print("  result:", result)
+    print(
+        "  computed falsification time:", computed_falsification_time,
+    )
+    print("  falsification time:", falsification_time)
     print("  total time:", total_time)
     results = {
         "Result": result,
         "TotalTime": total_time,
+        "FalsificationTime": falsification_time,
     }
     return results
 
@@ -163,7 +192,7 @@ def main(args, extra_args):
     with lock(args.results_csv):
         if not args.results_csv.exists():
             with open(args.results_csv, "w+") as f:
-                f.write("ProblemId,Result,TotalTime\n")
+                f.write("ProblemId,Result,FalsificationTime,TotalTime\n")
     properties = set()
     property_df = pd.read_csv(args.artifact_path / args.properties_filename)
     for row in property_df.itertuples():
@@ -186,21 +215,26 @@ def main(args, extra_args):
             .unique()
             .item()
         )
+        network_names = (
+            property_df[(property_df["problem_id"] == problem_id)]["network_names"]
+            .item()
+            .split(":")
+        )
         network_filenames = (
             property_df[(property_df["problem_id"] == problem_id)]["network_filenames"]
             .item()
             .split(":")
         )
-        assert len(network_filenames) == 1
-        network_filename = network_filenames[0]
-
+        networks = " ".join(
+            [f"--network {n} {fn}" for n, fn in zip(network_names, network_filenames)]
+        )
         resmonitor = f"python {Path(__file__).absolute().parent}/resmonitor.py"
         resmonitor_args = f"{resmonitor} -M {args.memory} -T {args.time}"
         extra_args_str = " ".join(extra_args)
-        verifier_args = (
-            f"python -m dnnv {network_filename} {property_filename} {extra_args_str}"
+        falsifier_args = (
+            f"python -m dnnf {property_filename} {networks} {extra_args_str} -v"
         )
-        run_args = f"{resmonitor_args} {verifier_args}"
+        run_args = f"{resmonitor_args} {falsifier_args}"
         print(run_args)
 
         proc = sp.Popen(

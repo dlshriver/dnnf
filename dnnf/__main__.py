@@ -1,6 +1,5 @@
 """
 """
-import multiprocessing as mp
 import numpy as np
 import os
 import time
@@ -50,8 +49,6 @@ def main(
     falsification_time = result["time"]
     print(f"  falsification time: {falsification_time:.4f}")
     print(f"  total time: {end_t - start_t:.4f}", flush=True)
-
-    os.killpg(os.getpgrp(), 9)
 
 
 def __main__():

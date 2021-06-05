@@ -3,18 +3,28 @@
 Installation
 ============
 
-DNNF can be installed from source or using docker.
-We also provide a `pre-configured VirtualBox VM <http://TODO>`_, containing the tool and data used for the evaluation in `Reducing DNN Properties to Enable Falsification with Adversarial Attacks <https://davidshriver.me/publications/>`_.
+DNNF can be installed using pip, manually from source, or using docker.
+We also provide a `pre-configured VirtualBox VM <https://doi.org/10.5281/zenodo.4439219>`_, containing the tool and data used for the evaluation in `Reducing DNN Properties to Enable Falsification with Adversarial Attacks <https://doi.org/10.1109/ICSE43902.2021.00036>`_ (`pre-print`_).
 
-From Source
+Pip Install
 -----------
 
-The required dependencies are:
+DNNF can be installed using pip by running::
+
+  $ pip install dnnf
+
+This will install the last version uploaded to `PyPI`_. To install the most recent changes from GitHub, run::
+
+  $ pip install git+https://github.com/dlshriver/DNNF.git@main
+
+*Note:* installation with pip will not install the TensorFuzz falsification backend. Currently this backend is only available through manual installation or the provided docker image.
+
+Source Install
+--------------
+
+The required dependencies to install DNNF from source are:
 
 - git
-- wget
-- gcc-7
-- g++-7
 - virtualenv
 - python3.7
 - python3.7-dev
@@ -29,30 +39,30 @@ For example, on a fresh Ubuntu 20.04 system, the dependencies can be installed u
   $ sudo apt-get install python3.7-dev
   $ sudo apt-get install python2.7
   $ sudo apt-get install virtualenv
-  $ sudo apt-get install gcc-7
-  $ sudo apt-get install g++-7
+  $ sudo apt-get install git
 
-To install DNNF, and the tools used to run the study to the local directory, run the provided installation script::
+To install DNNF in the local directory, download this repo and run the provided installation script::
 
   $ ./install.sh
 
-This may take several minutes and there may be several prompts during installation.
 We have successfully tested this installation procedure on machines running Ubuntu 20.04 and CentOS 7.
-Both machines used gcc version 7, but other versions will likely work as well.
 
 Using Docker
 ------------
 
-DNNF can be installed and run using docker as follows::
+We provide a pre-built docker image containing DNNF, available on `Docker Hub`_. To use this image, run the following::
+
+  $ docker pull dlshriver/dnnv
+  $ docker run -it dlshriver/dnnf
+  (.venv) dnnf@hostname:~$ dnnf -h
+
+To build a docker image with the latest changes to DNNF, run::
 
   $ docker build . -t dlshriver/dnnf
   $ docker run -it dlshriver/dnnf
-  (.venv) dnnf@hostname:~$ python -m dnnf -h
+  (.venv) dnnf@hostname:~$ dnnf -h
 
 
-Using Pip
----------
-
-DNNF can also be installed using pip as follows:
-
-  $ pip install dnnf
+.. _`pre-print`: <https://davidshriver.me/files/publications/ICSE21-DNNF.pdf
+.. _`PyPI`: https://pypi.org/project/dnnf/
+.. _`Docker Hub`: https://hub.docker.com/r/dlshriver/dnnf

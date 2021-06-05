@@ -360,6 +360,16 @@ class PytorchConverter(OperationVisitor):
 
         return softmax
 
+    def visit_Sub(self, operation: operations.Sub):
+        self.generic_visit(operation)
+
+        def add(operation_graph):
+            a = operation_graph[operation.a]
+            b = operation_graph[operation.b]
+            return a - b
+
+        return add
+
     def visit_Tanh(self, operation: operations.Tanh):
         self.generic_visit(operation)
 
