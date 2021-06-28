@@ -162,7 +162,7 @@ class PytorchConverter(OperationVisitor):
             padded_x = F.pad(
                 x, (pad_left, pad_right, pad_top, pad_bottom), "constant", 0
             )
-            result = F.conv2d(padded_x, weights, bias, operation.strides)
+            result = F.conv2d(padded_x, weights, bias, tuple(operation.strides))
             return result
 
         return conv
