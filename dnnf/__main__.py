@@ -27,7 +27,7 @@ def main(
     phi = parse_property(property, format=prop_format, args=extra_args)
     print("Falsifying:", phi)
     for name, network in networks.items():
-        dnn = parse_network(network)
+        dnn = parse_network(network, net_format="onnx")
         dnn = dnn.simplify()
         if kwargs["debug"]:
             print(f"Network {name}:")
