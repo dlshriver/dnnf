@@ -258,7 +258,7 @@ class PytorchConverter(OperationVisitor):
             return F.leaky_relu(x, negative_slope=operation.alpha)
 
         return leakyrelu
-    
+
     def visit_MatMul(self, operation: operations.MatMul):
         self.generic_visit(operation)
 

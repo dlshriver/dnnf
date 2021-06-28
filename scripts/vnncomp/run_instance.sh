@@ -21,6 +21,8 @@ echo "Running benchmark instance in category '$CATEGORY' with onnx file '$ONNX_F
 DIR=$(dirname $(dirname $(dirname $(realpath $0))))
 . $DIR/.venv/bin/activate
 
+export TF_CPP_MIN_LOG_LEVEL=3
+
 timeout $TIMEOUT dnnf "$VNNLIB_FILE" --network N "$ONNX_FILE" --vnnlib --n_start=1000 -p40 >$TMP_RESULTS_FILE
 
 exitcode=$?

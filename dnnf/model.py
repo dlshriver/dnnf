@@ -14,7 +14,9 @@ class FalsificationModel:
             int(d) if d > 0 else 1 for d in self.input_details[0].shape
         )
         self.input_dtype = self.input_details[0].dtype
-        self.input_torch_dtype = torch.from_numpy(np.ones((1,), dtype=self.input_dtype)).dtype
+        self.input_torch_dtype = torch.from_numpy(
+            np.ones((1,), dtype=self.input_dtype)
+        ).dtype
         self.model = self.as_pytorch()
 
     def __call__(self, *args, **kwargs):
@@ -28,14 +30,18 @@ class FalsificationModel:
         lower_bounds = self.prop.input_lower_bounds
         assert len(lower_bounds) == 1
         lower_bound = lower_bounds[0]
-        return torch.from_numpy(lower_bound.astype(self.input_dtype)).to(self.model.device)
+        return torch.from_numpy(lower_bound.astype(self.input_dtype)).to(
+            self.model.device
+        )
 
     @property
     def input_upper_bound(self):
         upper_bounds = self.prop.input_upper_bounds
         assert len(upper_bounds) == 1
         upper_bound = upper_bounds[0]
-        return torch.from_numpy(upper_bound.astype(self.input_dtype)).to(self.model.device)
+        return torch.from_numpy(upper_bound.astype(self.input_dtype)).to(
+            self.model.device
+        )
 
     def as_pytorch(self):
         from .pytorch import convert

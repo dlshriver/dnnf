@@ -183,20 +183,24 @@ class HPolyProperty(Property):
         else:
             if axis == 0:
                 output_operations = [
-                operations.Reshape(o, (-1,)) for o in self.op_graph.output_operations
-            ]
+                    operations.Reshape(o, (-1,))
+                    for o in self.op_graph.output_operations
+                ]
             else:
                 output_operations = [
-                operations.Flatten(o, axis=axis) for o in self.op_graph.output_operations
-            ]
+                    operations.Flatten(o, axis=axis)
+                    for o in self.op_graph.output_operations
+                ]
             new_output_op = operations.Concat(output_operations, axis=axis)
         if axis == 0:
             flat_input_ops = [
-                operations.Reshape(o, (-1,)) for o in self.op_graph[:1].output_operations
+                operations.Reshape(o, (-1,))
+                for o in self.op_graph[:1].output_operations
             ]
         else:
             flat_input_ops = [
-                operations.Flatten(o, axis=axis) for o in self.op_graph[:1].output_operations
+                operations.Flatten(o, axis=axis)
+                for o in self.op_graph[:1].output_operations
             ]
         new_output_op = operations.Concat([new_output_op] + flat_input_ops, axis=axis)
         dtype = OperationGraph([new_output_op]).output_details[0].dtype
@@ -213,7 +217,9 @@ class HPolyProperty(Property):
         for i in range(k):
             W_mask[i, 0] = 1
         new_output_op = operations.Add(operations.MatMul(new_output_op, W_mask), b_mask)
-        new_op_graph = OpGraphMerger().merge([OperationGraph([new_output_op])]).simplify()
+        new_op_graph = (
+            OpGraphMerger().merge([OperationGraph([new_output_op])]).simplify()
+        )
         return new_op_graph
 
 

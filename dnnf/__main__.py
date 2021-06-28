@@ -13,6 +13,26 @@ from .cli import parse_args
 from .falsifier import falsify
 from .utils import initialize_logging, set_random_seed
 
+from dnnv.nn.graph import OperationGraph
+from dnnv.nn.utils import TensorDetails
+
+orig_input_details = OperationGraph.input_details
+
+
+@property
+def new_input_details(self):
+    if self._input_details is None:
+        _input_details = orig_input_details.fget(self)
+        self._input_details = tuple(
+            TensorDetails(tuple(i if i >= 0 else 1 for i in d.shape), d.dtype)
+            for d in _input_details
+        )
+    return self._input_details
+
+
+OperationGraph.input_details = new_input_details
+
+
 def main(
     property: Path,
     networks: Dict[str, Path],
