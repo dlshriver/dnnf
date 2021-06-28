@@ -22,4 +22,4 @@ apt-get update
 apt-get install -y python2.7 python3.7 python3.7-dev python3-virtualenv
 apt-get install -y psmisc # for killall, used in prepare_instance.sh script
 
-$DIR/install.sh
+FLIT_ROOT_INSTALL=1 $DIR/install.sh

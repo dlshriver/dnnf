@@ -28,6 +28,7 @@ if [ "$VIRTUAL_ENV" == "" ]; then
 else
     echo "Using active virtual environment: $VIRTUAL_ENV"
 fi
+cd $PROJECT_DIR
 pip install --upgrade pip flit setuptools
 flit install -s
 
