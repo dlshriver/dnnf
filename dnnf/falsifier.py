@@ -130,7 +130,8 @@ def pgd(model: FalsificationModel, n_steps=100, **kwargs):
     for step_i in range(n_steps):
         x.requires_grad = True
         y = model(x)
-        if any(y[0, 0] <= y[0, i] for i in range(1, y.shape[1])):
+        flat_y = y.flatten()
+        if any(flat_y[0] <= flat_y[i] for i in range(1, len(flat_y))):
             counter_example = x.cpu().detach().numpy()
             if model.validate(counter_example):
                 logger.info("FOUND COUNTEREXAMPLE")

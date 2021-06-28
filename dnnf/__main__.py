@@ -13,7 +13,6 @@ from .cli import parse_args
 from .falsifier import falsify
 from .utils import initialize_logging, set_random_seed
 
-
 def main(
     property: Path,
     networks: Dict[str, Path],

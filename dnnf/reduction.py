@@ -176,30 +176,45 @@ class HPolyProperty(Property):
     def suffixed_op_graph(self) -> OperationGraph:
         import dnnv.nn.operations as operations
 
+        output_shape = self.op_graph.output_shape[0]
+        axis = (0, 0, 1)[len(output_shape)]
         if len(self.op_graph.output_operations) == 1:
             new_output_op = self.op_graph.output_operations[0]
         else:
-            output_operations = [
-                operations.Flatten(o) for o in self.op_graph.output_operations
+            if axis == 0:
+                output_operations = [
+                operations.Reshape(o, (-1,)) for o in self.op_graph.output_operations
             ]
-            new_output_op = operations.Concat(output_operations, axis=1)
-        flat_input_ops = [
-            operations.Flatten(o) for o in self.op_graph[:1].output_operations
-        ]
-        new_output_op = operations.Concat([new_output_op] + flat_input_ops, axis=1)
+            else:
+                output_operations = [
+                operations.Flatten(o, axis=axis) for o in self.op_graph.output_operations
+            ]
+            new_output_op = operations.Concat(output_operations, axis=axis)
+        if axis == 0:
+            flat_input_ops = [
+                operations.Reshape(o, (-1,)) for o in self.op_graph[:1].output_operations
+            ]
+        else:
+            flat_input_ops = [
+                operations.Flatten(o, axis=axis) for o in self.op_graph[:1].output_operations
+            ]
+        new_output_op = operations.Concat([new_output_op] + flat_input_ops, axis=axis)
+        dtype = OperationGraph([new_output_op]).output_details[0].dtype
+
         Wb = np.vstack(self.hpoly)
-        W = Wb[:, :-1].T.astype(np.float32)
-        b = -Wb[:, -1].astype(np.float32)
+        W = Wb[:, :-1].T.astype(dtype)
+        b = -Wb[:, -1].astype(dtype)
         new_output_op = operations.Add(operations.MatMul(new_output_op, W), b)
         new_output_op = operations.Relu(new_output_op)
 
         k = len(self.hpoly)
-        W_mask = np.zeros((k, 2), dtype=np.float32)
-        b_mask = np.zeros(2, dtype=np.float32)
+        W_mask = np.zeros((k, 2), dtype=dtype)
+        b_mask = np.zeros(2, dtype=dtype)
         for i in range(k):
             W_mask[i, 0] = 1
         new_output_op = operations.Add(operations.MatMul(new_output_op, W_mask), b_mask)
-        return OpGraphMerger().merge([OperationGraph([new_output_op])]).simplify()
+        new_op_graph = OpGraphMerger().merge([OperationGraph([new_output_op])]).simplify()
+        return new_op_graph
 
 
 class ExpressionDetailsInference(ExpressionVisitor):

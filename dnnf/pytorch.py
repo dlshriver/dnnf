@@ -258,6 +258,16 @@ class PytorchConverter(OperationVisitor):
             return F.leaky_relu(x, negative_slope=operation.alpha)
 
         return leakyrelu
+    
+    def visit_MatMul(self, operation: operations.MatMul):
+        self.generic_visit(operation)
+
+        def matmul(operation_graph):
+            a = operation_graph[operation.a]
+            b = operation_graph[operation.b]
+            return torch.matmul(a, b)
+
+        return matmul
 
     def visit_MaxPool(self, operation: operations.MaxPool):
         self.generic_visit(operation)
