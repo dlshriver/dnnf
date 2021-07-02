@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 TOOL_NAME="dnnf"
 VERSION_STRING="v1"
 
@@ -14,12 +16,12 @@ DIR=$(dirname $(dirname $(dirname $(realpath $0))))
 export DEBIAN_FRONTEND="noninteractive"
 export TZ="America/New_York"
 
-apt-get update
-apt-get install -y software-properties-common
-apt-get install -y build-essential
-add-apt-repository ppa:deadsnakes/ppa
-apt-get update
-apt-get install -y python2.7 python3.7 python3.7-dev python3-virtualenv
-apt-get install -y psmisc # for killall, used in prepare_instance.sh script
+sudo apt-get update
+sudo apt-get install -y software-properties-common
+sudo apt-get install -y build-essential
+sudo add-apt-repository ppa:deadsnakes/ppa
+sudo apt-get update
+sudo apt-get install -y python2.7 python3.7 python3.7-dev python3-virtualenv
+sudo apt-get install -y psmisc # for killall, used in prepare_instance.sh script
 
-FLIT_ROOT_INSTALL=1 $DIR/install.sh
+$DIR/install.sh
