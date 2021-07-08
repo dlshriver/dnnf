@@ -21,7 +21,7 @@ sudo apt-get install -y software-properties-common
 sudo apt-get install -y build-essential
 sudo add-apt-repository ppa:deadsnakes/ppa
 sudo apt-get update
-sudo apt-get install -y python2.7 python3.7 python3.7-dev python3-virtualenv
+sudo apt-get install -y python2.7 python3.7 python3.7-dev python3-virtualenv python3.7-venv
 sudo apt-get install -y psmisc # for killall, used in prepare_instance.sh script
 
 $DIR/install.sh
