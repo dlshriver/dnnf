@@ -11,7 +11,7 @@ RUN apt-get -qq install -y software-properties-common
 RUN apt-get -qq install -y build-essential
 RUN add-apt-repository -y ppa:deadsnakes/ppa
 RUN apt-get -qq update
-RUN apt-get -qq install -y python3.7 python3.7-dev python3.7-venv
+RUN apt-get -qq install -y python3.7 python3.7-dev python3.7-venv wget
 
 USER dnnf
 WORKDIR /home/dnnf/
