@@ -26,7 +26,7 @@ COPY --chown=dnnf scripts/ scripts/
 COPY --chown=dnnf install.sh .
 COPY --chown=dnnf tools/ tools/
 COPY --chown=dnnf dnnf/ dnnf/
-COPY --chown=dnnf README.md .
+COPY --chown=dnnf README.rst .
 
 RUN ./install.sh
 RUN wget http://cs.virginia.edu/~dls2fc/dnnf_benchmarks.tar.gz
