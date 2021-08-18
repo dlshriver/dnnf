@@ -2,13 +2,16 @@
 requires = ["flit"]
 build-backend = "flit.buildapi"
 
-[tool.flit.metadata]
-module = "dnnf"
-author = "David Shriver"
-author-email = "dls2fc@virginia.edu"
-home-page = "https://github.com/dlshriver/DNNF"
-description-file = "README.rst"
-requires = [
+[project]
+name = "dnnf"
+authors = [{ name = "David Shriver", email = "dls2fc@virginia.edu" }]
+readme = "README.rst"
+license = { file = "LICENSE" }
+classifiers = ["License :: OSI Approved :: MIT License"]
+requires-python = ">=3.7"
+dynamic = ["version", 'description']
+keywords = ["DNN", "neural network", "falsification"]
+dependencies = [
     "dnnv~=0.4",
     "numpy>=1.16",
     "onnx>=1.7",
@@ -17,17 +20,20 @@ requires = [
     "torchvision>=0.7",
     "tensorflow<2.0",
 ]
-requires-python = ">=3.7"
 
-[tool.flit.metadata.requires-extra]
+[project.optional-dependencies]
 cleverhans = ["cleverhans==3.0.1"]
 foolbox = ["foolbox~=3.3"]
 dev = ["black", "mypy"]
 doc = ["sphinx==2.4"]
 test = ["coverage"]
 
-[tool.flit.scripts]
-dnnf = "dnnf.__main__:__main__"
+[project.urls]
+Documentation = "https://dnnf.readthedocs.io/en/latest/"
+Source = "https://github.com/dlshriver/DNNF"
+
+[project.scripts]
+dnnf = "dnnf.__main__:_main"
 
 [tool.coverage.run]
 branch = true
