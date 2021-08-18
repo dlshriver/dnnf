@@ -9,7 +9,7 @@ from dnnv.properties import Expression
 from functools import partial
 from typing import Any, Dict, List, Type, Union
 
-from .extractor import PropertyExtractor, HalfspacePolytope, HyperRectangle
+from .reduction import HPolyReduction
 from .model import FalsificationModel
 
 
@@ -36,12 +36,12 @@ def falsify(
         backend = [backend]
 
     counter_example = None
-    extractor = PropertyExtractor(HyperRectangle, HalfspacePolytope)
+    reduction = HPolyReduction()
+    executor_params = {}
     if n_proc == 1:
         executor: Union[
             Type[ThreadPoolExecutor], Type[ProcessPoolExecutor]
         ] = ThreadPoolExecutor
-        executor_params = {}
     else:
         executor = ProcessPoolExecutor
         executor_params = {
@@ -61,7 +61,7 @@ def falsify(
         method = globals()[method_name]
         parameters = backend_parameters[backend_method]
         method_n_starts = parameters.pop("n_starts", n_starts)
-        for i, prop in enumerate(extractor.extract_from(~phi)):
+        for i, prop in enumerate(reduction.reduce_property(phi)):
             logger.debug(f"subproblem {backend_method}_{i}")
             tasks.append(
                 falsify_model(
@@ -111,7 +111,7 @@ async def falsify_model(
         if counter_example is not None:
             logger.info(f"FALSIFIED ({_TASK_ID}) at restart: {start_i}")
             for network, result in zip(
-                model.prop.networks, model.prop.op_graph(counter_example)
+                model.prop.output_vars, model.prop.op_graph(counter_example)
             ):
                 logger.debug("%s -> %s", network, result)
             return counter_example
@@ -121,17 +121,17 @@ async def falsify_model(
             logger.info("RESTART(%s): %d", _TASK_ID, start_i)
 
 
-def pgd(model: FalsificationModel, n_steps=50, **kwargs):
+def pgd(model: FalsificationModel, n_steps=100, **kwargs):
     logger = logging.getLogger(__name__)
 
     if kwargs.get("cuda", False):
         model.model.to("cuda")
     x = model.sample()
     for step_i in range(n_steps):
-        x = model.project_input(x)
         x.requires_grad = True
         y = model(x)
-        if any(y[0, 0] <= y[0, i] for i in range(1, y.shape[1])):
+        flat_y = y.flatten()
+        if any(flat_y[0] <= flat_y[i] for i in range(1, len(flat_y))):
             counter_example = x.cpu().detach().numpy()
             if model.validate(counter_example):
                 logger.info("FOUND COUNTEREXAMPLE")
@@ -140,6 +140,7 @@ def pgd(model: FalsificationModel, n_steps=50, **kwargs):
         x = model.step(x, y)
         if x is None:
             break
+        x = model.project_input(x)
 
 
 def cleverhans(
@@ -149,6 +150,7 @@ def cleverhans(
     **kwargs,
 ):
     import tensorflow.compat.v1 as tf
+
     import cleverhans.attacks as cleverhans_attacks
     from cleverhans.model import CallableModelWrapper
 
@@ -226,9 +228,7 @@ def foolbox(
     pytorch_model = torch.nn.Sequential(normalizer, model.model).eval().to(device)
     finput = torch.zeros_like(lb) + 0.5
     flabel = torch.zeros(1, dtype=np.long, device=device)
-    fmodel = fb.PyTorchModel(
-        model.model.eval().to(device), bounds=(0, 1), device=device
-    )
+    fmodel = fb.PyTorchModel(pytorch_model, bounds=(0, 1), device=device)
     epsilons = [0.5]
 
     if parameters is None:

@@ -1,26 +1,23 @@
 import numpy as np
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
 
-from .extractor import Property, HyperRectangle
+from .reduction import Property
 
 
 class FalsificationModel:
     def __init__(self, prop: Property):
         self.prop = prop
-        self.input_constraint = prop.input_constraint
-        self.output_constraint = prop.output_constraint
-        self.op_graph = prop.as_operation_graph()
+        self.op_graph = prop.suffixed_op_graph()
         self.input_details = self.op_graph.input_details
         self.input_shape = tuple(
             int(d) if d > 0 else 1 for d in self.input_details[0].shape
         )
+        self.input_dtype = self.input_details[0].dtype
+        self.input_torch_dtype = torch.from_numpy(
+            np.ones((1,), dtype=self.input_dtype)
+        ).dtype
         self.model = self.as_pytorch()
-        if not isinstance(self.input_constraint, HyperRectangle):
-            raise ValueError(
-                "Only HyperRectangle input constraints are currently supported"
-            )
 
     def __call__(self, *args, **kwargs):
         return self.model(*args, **kwargs)
@@ -30,20 +27,20 @@ class FalsificationModel:
 
     @property
     def input_lower_bound(self):
-        return (
-            torch.from_numpy(self.input_constraint.lower_bound)
-            .reshape(self.input_shape)
-            .float()
-            .to(self.model.device)
+        lower_bounds = self.prop.input_lower_bounds
+        assert len(lower_bounds) == 1
+        lower_bound = lower_bounds[0]
+        return torch.from_numpy(lower_bound.astype(self.input_dtype)).to(
+            self.model.device
         )
 
     @property
     def input_upper_bound(self):
-        return (
-            torch.from_numpy(self.input_constraint.upper_bound)
-            .reshape(self.input_shape)
-            .float()
-            .to(self.model.device)
+        upper_bounds = self.prop.input_upper_bounds
+        assert len(upper_bounds) == 1
+        upper_bound = upper_bounds[0]
+        return torch.from_numpy(upper_bound.astype(self.input_dtype)).to(
+            self.model.device
         )
 
     def as_pytorch(self):
@@ -55,11 +52,9 @@ class FalsificationModel:
         return self.op_graph.as_tf()
 
     def loss(self, y):
-        # return -F.cross_entropy(y, torch.Tensor([1]).long().to(y.device))
-        # return F.cross_entropy(y, torch.Tensor([0]).long().to(y.device))
         return F.cross_entropy(
-            y, torch.Tensor([0]).long().to(y.device)
-        ) - F.cross_entropy(y, torch.Tensor([1]).long().to(y.device))
+            y.reshape((1, -1)), torch.Tensor([0]).long().to(y.device)
+        ) - F.cross_entropy(y.reshape((1, -1)), torch.Tensor([1]).long().to(y.device))
 
     def project_input(self, x):
         y = x.detach()
@@ -73,29 +68,36 @@ class FalsificationModel:
 
     def sample(self):
         x = (
-            torch.rand(self.input_shape, device=self.model.device, dtype=torch.float32,)
+            torch.rand(
+                self.input_shape,
+                device=self.model.device,
+                dtype=self.input_torch_dtype,
+            )
             * (self.input_upper_bound - self.input_lower_bound)
             + self.input_lower_bound
         )
-        return x
+        return x.detach()
 
-    def step(self, x, y, alpha=0.1):
+    def step(self, x, y, alpha=0.05):
         loss = self.loss(y)
         loss.backward()
-        if x.grad.abs().max().item() < 1e-12:
+        gradients = x.grad
+        neg_grads = gradients < 0
+        pos_grads = gradients > 0
+        lb = self.input_lower_bound
+        ub = self.input_upper_bound
+        gradients[(x == lb) & neg_grads] = 0
+        gradients[(x == ub) & pos_grads] = 0
+        if gradients.abs().max().item() < 1e-12:
             return
         lb = self.input_lower_bound
         ub = self.input_upper_bound
         epsilon = (ub - lb) / 2
-        x = x + F.normalize(x.grad) * epsilon * alpha
-        return x
+        if len(gradients.shape) == 1:
+            x = x + F.normalize(gradients.reshape(1, -1)).flatten() * epsilon
+        else:
+            x = x + F.normalize(gradients) * epsilon
+        return x.detach()
 
     def validate(self, x):
-        if np.any(np.isnan(x)):
-            return False
-        if not self.input_constraint.validate(x):
-            return False
-        y = self.prop.op_graph(x)
-        if not self.output_constraint.validate(*y):
-            return False
-        return True
+        return self.prop.validate_counter_example(x)

@@ -162,7 +162,7 @@ class PytorchConverter(OperationVisitor):
             padded_x = F.pad(
                 x, (pad_left, pad_right, pad_top, pad_bottom), "constant", 0
             )
-            result = F.conv2d(padded_x, weights, bias, operation.strides)
+            result = F.conv2d(padded_x, weights, bias, tuple(operation.strides))
             return result
 
         return conv
@@ -258,6 +258,16 @@ class PytorchConverter(OperationVisitor):
             return F.leaky_relu(x, negative_slope=operation.alpha)
 
         return leakyrelu
+
+    def visit_MatMul(self, operation: operations.MatMul):
+        self.generic_visit(operation)
+
+        def matmul(operation_graph):
+            a = operation_graph[operation.a]
+            b = operation_graph[operation.b]
+            return torch.matmul(a, b)
+
+        return matmul
 
     def visit_MaxPool(self, operation: operations.MaxPool):
         self.generic_visit(operation)
@@ -359,6 +369,16 @@ class PytorchConverter(OperationVisitor):
             return torch.softmax(x, dim=axis)
 
         return softmax
+
+    def visit_Sub(self, operation: operations.Sub):
+        self.generic_visit(operation)
+
+        def add(operation_graph):
+            a = operation_graph[operation.a]
+            b = operation_graph[operation.b]
+            return a - b
+
+        return add
 
     def visit_Tanh(self, operation: operations.Tanh):
         self.generic_visit(operation)

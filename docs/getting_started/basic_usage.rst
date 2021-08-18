@@ -5,19 +5,19 @@ DNNF can be run on correctness problems specified using ONNX for the network for
 
 To execute DNNF, first activate the virtual environment with::
 
-  $ . .env.d/openenv.sh
+  $ . .venv/bin/activate
 
 This is only required if DNNF was installed from source. The virtual environment should open automatically if using the docker image or the provided VM.
 
 The DNNF tool can then be run as follows::
 
-  $ python -m dnnf PROPERTY --network NAME PATH
+  $ dnnf PROPERTY --network NAME PATH
 
 Where ``PROPERTY`` is the path to the property specification, ``NAME`` is the name of the network used in the property specification (typically ``N``), and ``PATH`` is the path to a DNN model in the ONNX_ format.
 
 To see additional options, run::
 
-  $ python -m dnnf -h
+  $ dnnf -h
   usage: dnnf [-h] [-V] [--seed SEED] [-v | -q] [-N NETWORKS NETWORKS]
               [-p N_PROC] [-S N_STARTS] [--cuda]
               [--backend BACKEND [BACKEND ...]] [--set METHOD PARAM VALUE]
@@ -54,7 +54,7 @@ We provide the property and network benchmarks used in the evaluation of our pap
 To execute DNNF on a problem in one of the benchmarks, first navigate to the desired benchmark directory in ``artifacts`` (i.e., ``acas_benchmark``, ``neurifydave_benchmark``, or ``ghpr_benchmark``). Then run DNNF as specified above. For example, to run DNNF with the Projected Gradient Descent adversarial attack from `cleverhans`_ on an ACAS property and network, run::
 
   $ cd artifacts/acas_benchmark
-  $ python -m dnnf properties/property_2.py --network N onnx/N_3_1.onnx --backend cleverhans.ProjectedGradientDescent
+  $ dnnf properties/property_2.py --network N onnx/N_3_1.onnx --backend cleverhans.ProjectedGradientDescent
 
 Which will produce output similar to::
 

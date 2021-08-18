@@ -249,7 +249,7 @@ class Property:
         return "\n".join(strs)
 
     def as_operation_graph(self) -> OperationGraph:
-        from dnnv.nn.operations import Gemm, Relu, Flatten, Concat
+        from dnnv.nn.operations import Add, MatMul, Relu, Flatten, Concat
 
         if not isinstance(self.output_constraint, HalfspacePolytope):
             raise ValueError(
@@ -257,22 +257,24 @@ class Property:
             )
         output_operations = [Flatten(o) for o in self.op_graph.output_operations]
         new_output_op = Concat(output_operations, axis=1)
+        dtype = OperationGraph([new_output_op]).output_details[0].dtype
+
         size = self.output_constraint.size()
         k = len(self.output_constraint.halfspaces)
-        W = np.zeros((size, k), dtype=np.float32)
-        b = np.zeros(k, dtype=np.float32)
+        W = np.zeros((size, k), dtype=dtype)
+        b = np.zeros(k, dtype=dtype)
         for n, hs in enumerate(self.output_constraint.halfspaces):
             b[n] = np.nextafter(-hs.b, -1)
             for i, c in zip(hs.indices, hs.coefficients):
                 W[i, n] = c
-        new_output_op = Gemm(new_output_op, W, b)
+        new_output_op = Add(MatMul(new_output_op, W), b)
         new_output_op = Relu(new_output_op)
 
-        W_mask = np.zeros((k, 2), dtype=np.float32)
-        b_mask = np.zeros(2, dtype=np.float32)
+        W_mask = np.zeros((k, 2), dtype=dtype)
+        b_mask = np.zeros(2, dtype=dtype)
         for i in range(k):
             W_mask[i, 0] = 1
-        new_output_op = Gemm(new_output_op, W_mask, b_mask)
+        new_output_op = Add(MatMul(new_output_op, W_mask), b_mask)
         return OperationGraph([new_output_op])
 
 
