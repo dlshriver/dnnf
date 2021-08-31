@@ -2,11 +2,11 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from .reduction import Property
+from .reduction import HPolyProperty
 
 
 class FalsificationModel:
-    def __init__(self, prop: Property):
+    def __init__(self, prop: HPolyProperty):
         self.prop = prop
         self.op_graph = prop.suffixed_op_graph()
         self.input_details = self.op_graph.input_details

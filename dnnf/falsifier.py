@@ -48,7 +48,7 @@ def falsify(
             "mp_context": mp.get_context("spawn"),
             "initializer": _init_logging,
         }
-    pool = executor(max_workers=n_proc, **executor_params)
+    pool = executor(max_workers=n_proc, **executor_params) # type: ignore
     tasks = []
     backend_parameters = kwargs.pop("parameters")
     for backend_method in backend:
@@ -255,9 +255,8 @@ def tensorfuzz(model: FalsificationModel, n_steps=100, **kwargs):
 
     logger = logging.getLogger(__name__)
 
-    shape, dtype = model.input_details[0]
-    lb = model.input_constraint.lower_bound.reshape(shape).astype(dtype)
-    ub = model.input_constraint.upper_bound.reshape(shape).astype(dtype)
+    lb = model.input_lower_bound
+    ub = model.input_upper_bound
 
     with tempfile.TemporaryDirectory() as tmpdir:
         logger.debug("Using temporary directory: %s", tmpdir)
@@ -283,6 +282,8 @@ def tensorfuzz(model: FalsificationModel, n_steps=100, **kwargs):
         proc = sp.Popen(
             shlex.split(cmd), stdout=sp.PIPE, stderr=sp.PIPE, encoding="utf8"
         )
+        assert proc.stderr is not None
+        assert proc.stdout is not None
         stdout_lines: List[str] = []
         stderr_lines: List[str] = []
         while proc.poll() is None:
@@ -305,7 +306,9 @@ def tensorfuzz(model: FalsificationModel, n_steps=100, **kwargs):
             logger.debug(f"{{TENSORFUZZ (STDERR)}}: {line.strip()}")
         stderr_lines.extend(stderr_lines)
         if "Fuzzing succeeded" in "\n".join(stderr_lines):
-            counter_example = np.load(f"{tmpdir}/cex.npy")[None].astype(dtype)
+            counter_example = np.load(f"{tmpdir}/cex.npy")[None].astype(
+                model.input_details[0].dtype
+            )
             if model.validate(counter_example):
                 logger.info("FOUND COUNTEREXAMPLE")
                 return counter_example

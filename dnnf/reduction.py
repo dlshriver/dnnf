@@ -417,7 +417,7 @@ class HPolyPropertyBuilder:
                 current_bound = self.interval_constraints[0][flat_index]
                 self.interval_constraints[0][flat_index] = max(b / coeff, current_bound)
 
-    def build(self):
+    def build(self) -> HPolyProperty:
         return HPolyProperty(
             self.expr_details,
             self.input_vars,
@@ -442,7 +442,7 @@ class HPolyReduction(Reduction):
         )
         self._property_builder: Optional[HPolyPropertyBuilder] = None
 
-    def reduce_property(self, phi: Expression) -> Iterator[Property]:
+    def reduce_property(self, phi: Expression) -> Iterator[HPolyProperty]:
         if isinstance(phi, Exists):
             raise NotImplementedError(
                 "HPolyReduction currently supports only universally quantified properties"
@@ -498,7 +498,7 @@ class HPolyReduction(Reduction):
             self.visit(expr)
             coeffs.append(self._property_builder.coefficients[expr])
             var_indices.append(self._property_builder.var_indices[expr])
-        self._property_builder.var_indices[expression] = tuple(zip(*var_indices))
+        self._property_builder.var_indices[expression] = tuple(zip(*var_indices))  # type: ignore
         self._property_builder.coefficients[expression] = coeffs
 
     def visit_Multiply(self, expression: Multiply):
