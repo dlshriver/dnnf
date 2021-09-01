@@ -10,9 +10,11 @@ We provide instructions for installing DNNF with pip, installing DNNF from sourc
 
 ### Pip Install
 
-DNNF can be installed using pip by running::
+DNNF can be installed using pip by running:
 
+```bash
   $ pip install dnnf
+```
 
 This will install the last version uploaded to [PyPI](https://pypi.org/project/dnnf/). To install the most recent changes from GitHub, run:
 
@@ -93,9 +95,11 @@ The DNNF tool can then be run as follows:
 
 Where `PROPERTY` is the path to the property specification, `NAME` is the name of the network used in the property specification (typically `N`), and `PATH` is the path to a DNN model in the [ONNX](https://onnx.ai) format.
 
-To see additional options, run::
+To see additional options, run:
 
+```bash
   $ dnnf -h
+```
 
 
 ### Running on the Benchmarks
