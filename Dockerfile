@@ -1,4 +1,4 @@
-FROM ubuntu:impish-20211015
+FROM ubuntu:focal
 
 LABEL maintainer="David Shriver"
 
