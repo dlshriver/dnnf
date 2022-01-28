@@ -5,17 +5,17 @@ import logging
 import numpy as np
 
 from abc import abstractmethod, ABC
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Type, Union
+from typing import Dict, Iterator, List, Optional, Tuple, Type, Union
 
 from dnnv.nn import OperationGraph, OperationTransformer
-from dnnv.properties.base import (
+from dnnv.properties import (
     Add,
     And,
     Constant,
     Expression,
     Exists,
     Forall,
-    FunctionCall,
+    Call,
     LessThan,
     LessThanOrEqual,
     Multiply,
@@ -25,9 +25,6 @@ from dnnv.properties.base import (
     Symbol,
 )
 from dnnv.properties.visitors import ExpressionVisitor
-from numpy.core.fromnumeric import var
-from numpy.core.numeric import indices
-from numpy.lib.arraysetops import isin
 
 
 class ReductionError(Exception):
@@ -251,27 +248,7 @@ class ExpressionDetailsInference(ExpressionVisitor):
         for expr in sorted(expression, key=lambda e: -len(e.networks)):
             self.visit(expr)
 
-    def visit_Constant(self, expression: Constant):
-        value = expression.value
-        if isinstance(value, np.ndarray):
-            self.shapes[expression] = value.shape
-            self.types[expression] = value.dtype
-        elif isinstance(value, (int, float)):
-            self.shapes[expression] = ()
-            self.types[expression] = type(value)
-        elif isinstance(value, (list, tuple)):
-            try:
-                arr = np.asarray(value)
-                self.shapes[expression] = arr.shape
-                self.types[expression] = arr.dtype
-            except:
-                self.shapes[expression] = None
-                self.types[expression] = None
-        else:
-            self.shapes[expression] = None
-            self.types[expression] = None
-
-    def visit_FunctionCall(self, expression: FunctionCall):
+    def visit_Call(self, expression: Call):
         if isinstance(expression.function, Network):
             input_details = expression.function.value.input_details
             if len(expression.args) != len(input_details):
@@ -308,6 +285,26 @@ class ExpressionDetailsInference(ExpressionVisitor):
                 "Unsupported property:"
                 f" Function {expression.function} is not currently supported"
             )
+
+    def visit_Constant(self, expression: Constant):
+        value = expression.value
+        if isinstance(value, np.ndarray):
+            self.shapes[expression] = value.shape
+            self.types[expression] = value.dtype
+        elif isinstance(value, (int, float)):
+            self.shapes[expression] = ()
+            self.types[expression] = type(value)
+        elif isinstance(value, (list, tuple)):
+            try:
+                arr = np.asarray(value)
+                self.shapes[expression] = arr.shape
+                self.types[expression] = arr.dtype
+            except:
+                self.shapes[expression] = None
+                self.types[expression] = None
+        else:
+            self.shapes[expression] = None
+            self.types[expression] = None
 
     def visit_Multiply(self, expression: Multiply):
         tmp_array: Optional[np.array] = None
@@ -552,12 +549,12 @@ class HPolyReduction(Reduction):
         for expr in sorted(expression, key=lambda e: -len(e.networks)):
             self.visit(expr)
 
-    def visit_Constant(self, expression: Constant):
-        pass
-
-    def visit_FunctionCall(self, expression: FunctionCall):
+    def visit_Call(self, expression: Call):
         if not expression in self.expression_details.shapes:
             raise self.reduction_error(f"Unknown shape for expression: {expression}")
+
+    def visit_Constant(self, expression: Constant):
+        pass
 
     def _add_constraint(self, expression: Union[LessThan, LessThanOrEqual]):
         self.visit(expression.expr1)

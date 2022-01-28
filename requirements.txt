@@ -1,7 +1,7 @@
-dnnv~=0.4
-numpy~=1.16
-onnx~=1.7,<1.9
-scipy~=1.5
+dnnv~=0.5
+numpy>=1.20,<1.22
+onnx>=1.8,<1.11
+scipy~=1.7
 torch~=1.6
 torchvision~=0.7
 # Requirements for cleverhans

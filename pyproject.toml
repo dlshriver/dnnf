@@ -12,10 +12,10 @@ requires-python = ">=3.7"
 dynamic = ["version", 'description']
 keywords = ["DNN", "neural network", "falsification"]
 dependencies = [
-    "dnnv~=0.4.8",
-    "numpy~=1.16",
-    "onnx~=1.7,<1.9",
-    "scipy~=1.5",
+    "dnnv~=0.5.0",
+    "numpy>=1.20,<1.22",
+    "onnx>=1.8,<1.11",
+    "scipy~=1.7",
     "torch~=1.6",
     "torchvision~=0.7",
 ]
@@ -29,7 +29,7 @@ test = ["coverage~=5.5", "pytest~=6.2"]
 
 [project.urls]
 Documentation = "https://dnnf.readthedocs.io/en/latest/"
-Source = "https://github.com/dlshriver/DNNF"
+Source = "https://github.com/dlshriver/dnnf"
 
 [project.scripts]
 dnnf = "dnnf.__main__:__main__"
