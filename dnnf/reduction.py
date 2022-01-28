@@ -57,6 +57,7 @@ class HPoly:
 class OpGraphMerger(OperationTransformer):
     # TODO : merge common layers (e.g. same normalization, reshaping of input)
     def __init__(self):
+        super().__init__()
         self.output_operations = []
         self.input_operations = {}
 
@@ -120,7 +121,9 @@ class HPolyProperty(Property):
             self.input_lower_bounds.append(lb)
             self.input_upper_bounds.append(ub)
 
-        op_graphs = (n.value for n in sum((v.networks for v in self.output_vars), []))
+        op_graphs = (
+            n.value for n in sum((list(v.networks) for v in self.output_vars), [])
+        )
         self.op_graph = OpGraphMerger().merge(op_graphs)
 
     def __repr__(self):
@@ -449,7 +452,7 @@ class HPolyReduction(Reduction):
             expr = expr.expression
         if self.negate or True:
             expr = ~expr
-        canonical_expr = ~(~expr).canonical()
+        canonical_expr = expr.canonical()
         assert isinstance(canonical_expr, Or)
 
         self.expression_details.visit(canonical_expr)
@@ -470,7 +473,7 @@ class HPolyReduction(Reduction):
             ]
 
             self._property_builder = HPolyPropertyBuilder(
-                self.expression_details, input_variables, output_variables
+                self.expression_details, list(input_variables), output_variables
             )
             self.visit(disjunct)
             prop = self._property_builder.build()
