@@ -52,7 +52,7 @@ def falsify(
         }
     pool = executor(max_workers=n_proc, **executor_params)  # type: ignore
     tasks = []
-    backend_parameters = kwargs.pop("parameters")
+    backend_parameters = kwargs.pop("parameters") or {}
     for backend_method in backend:
         method_name, *variant = backend_method.split(".", maxsplit=1)
         if method_name not in globals():
@@ -61,7 +61,7 @@ def falsify(
             kwargs["variant"] = variant[0]
         logger.info("Using %s backend.", backend_method)
         method = globals()[method_name]
-        parameters = backend_parameters[backend_method]
+        parameters: Dict[str, Any] = backend_parameters.get(backend_method, {})
         method_n_starts = parameters.pop("n_starts", n_starts)
         for i, prop in enumerate(reduction.reduce_property(phi)):
             logger.debug(f"subproblem {backend_method}_{i}")
