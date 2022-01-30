@@ -5,8 +5,7 @@ scipy~=1.7
 torch~=1.6
 torchvision~=0.7
 # Requirements for cleverhans
-cleverhans==3.0.1; extra == "cleverhans"
-tensorflow~=2.0; extra == "cleverhans"
+cleverhans~=4.0; extra == "cleverhans"
 # Requirements for foolbox
 foolbox~=3.3; extra == "foolbox"
 # Requirements for testing

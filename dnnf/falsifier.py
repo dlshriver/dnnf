@@ -2,6 +2,7 @@ import asyncio
 import logging
 import multiprocessing as mp
 import numpy as np
+import torch
 import time
 
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
@@ -9,6 +10,7 @@ from dnnv.properties import Expression
 from functools import partial
 from typing import Any, Dict, List, Type, Union
 
+from .backends import *
 from .reduction import HPolyReduction
 from .model import FalsificationModel
 
@@ -48,7 +50,7 @@ def falsify(
             "mp_context": mp.get_context("spawn"),
             "initializer": _init_logging,
         }
-    pool = executor(max_workers=n_proc, **executor_params) # type: ignore
+    pool = executor(max_workers=n_proc, **executor_params)  # type: ignore
     tasks = []
     backend_parameters = kwargs.pop("parameters")
     for backend_method in backend:
@@ -149,55 +151,45 @@ def cleverhans(
     parameters: Dict[str, Any] = None,
     **kwargs,
 ):
-    import tensorflow.compat.v1 as tf
-
-    import cleverhans.attacks as cleverhans_attacks
-    from cleverhans.model import CallableModelWrapper
-
     logger = logging.getLogger(__name__)
+    if not cleverhans_backend:
+        logger.critical("CleverHans is not installed!")
+        raise ImportError("CleverHans is not installed!")
 
-    input_shape = tuple(model.input_lower_bound.shape)
-    lb = model.input_lower_bound.cpu().float().numpy()
-    ub = model.input_upper_bound.cpu().float().numpy()
-    ranges = ub - lb
+    if parameters is None:
+        parameters = {}
+    for key, value in parameters.items():
+        if isinstance(value, np.ndarray):
+            parameters[key] = torch.from_numpy(value)
 
-    def normalize(x):
-        x_norm = x * ranges + lb
-        assert x_norm.shape == x.shape
-        return x_norm
+    lb = model.input_lower_bound
+    ranges = model.input_upper_bound - lb
 
-    cleverhans_x = np.zeros(input_shape, dtype=np.float32) + 0.5
-    if model.validate(normalize(cleverhans_x)):
+    class Normalize(torch.nn.Module):
+        def forward(self, x):
+            return x * ranges + lb
+
+    normalizer = Normalize()
+
+    initial_x = torch.full_like(lb, 0.5)
+    _x = normalizer(initial_x).detach().numpy()
+    if model.validate(_x):
         logger.info("FOUND COUNTEREXAMPLE immediately")
-        return normalize(cleverhans_x)
-    g = tf.Graph()
-    sess = tf.Session(graph=g)
-    with g.as_default():
-        if parameters is None:
-            parameters = {}
-        if "clip_min" not in parameters:
-            parameters["clip_min"] = 0
-        if "clip_max" not in parameters:
-            parameters["clip_max"] = 1
-        for key, value in parameters.items():
-            if isinstance(value, np.ndarray):
-                parameters[key] = tf.convert_to_tensor(value)
-        model_tf = model.as_tf()
+        return _x
 
-        def callable_model(x):
-            return model_tf(normalize(x))
+    pytorch_model = torch.nn.Sequential(normalizer, model.model).eval()
 
-        attack_method = getattr(cleverhans_attacks, variant)
-        attack = attack_method(
-            (CallableModelWrapper(callable_model, "logits")), sess=sess
-        )
-        x_placeholder = tf.placeholder(tf.float32, shape=input_shape)
-        adv_x = attack.generate(x_placeholder, **parameters)
-        adv_x_npy_ = sess.run(adv_x, feed_dict={x_placeholder: cleverhans_x})
-        adv_x_npy = normalize(adv_x_npy_)
-        if model.validate(adv_x_npy):
-            logger.info("FOUND COUNTEREXAMPLE")
-            return adv_x_npy
+    device = torch.device("cpu")
+    if kwargs.get("cuda", False):
+        device = torch.device("cuda")
+    pytorch_model.to(device)
+
+    attack = cleverhans_backend[variant]
+    result = attack(pytorch_model, initial_x.to(device), **parameters)
+    counter_example = normalizer(result).detach().numpy()
+    if model.validate(counter_example):
+        logger.info("FOUND COUNTEREXAMPLE")
+        return counter_example
 
 
 def foolbox(
@@ -206,10 +198,10 @@ def foolbox(
     parameters: Dict[str, Any] = None,
     **kwargs,
 ):
-    import foolbox as fb
-    import torch
-
     logger = logging.getLogger(__name__)
+    if foolbox_backend is None:
+        logger.critical("Foolbox is not installed!")
+        raise ImportError("Foolbox is not installed!")
 
     device = torch.device("cpu")
     if kwargs.get("cuda", False):
@@ -225,20 +217,24 @@ def foolbox(
 
     normalizer = Normalize()
 
+    initial_input = torch.full_like(lb, 0.5)
+    _x = normalizer(initial_input).detach().numpy()
+    if model.validate(_x):
+        logger.info("FOUND COUNTEREXAMPLE immediately")
+        return _x
+
     pytorch_model = torch.nn.Sequential(normalizer, model.model).eval().to(device)
-    finput = torch.zeros_like(lb) + 0.5
+    finput = initial_input.to(device)
     flabel = torch.zeros(1, dtype=np.long, device=device)
-    fmodel = fb.PyTorchModel(pytorch_model, bounds=(0, 1), device=device)
-    epsilons = [0.5]
+    fmodel = foolbox_backend.PyTorchModel(pytorch_model, bounds=(0, 1), device=device)
+    epsilons = [1.0]
 
     if parameters is None:
         parameters = {}
-    attack = getattr(fb.attacks, variant)(**parameters)
+    attack = getattr(foolbox_backend.attacks, variant)(**parameters)
     _, advs, success = attack(fmodel, finput, flabel, epsilons=epsilons)
 
-    for succ, adv, epsilon in zip(success, advs, epsilons):
-        if not succ:
-            continue
+    for _, adv, _ in zip(success, advs, epsilons):
         counter_example = normalizer(adv).cpu().detach().numpy()
         if model.validate(counter_example):
             logger.info("FOUND COUNTEREXAMPLE")
@@ -251,7 +247,6 @@ def tensorfuzz(model: FalsificationModel, n_steps=100, **kwargs):
     import shlex
     import subprocess as sp
     import tempfile
-    import torch
 
     logger = logging.getLogger(__name__)
 

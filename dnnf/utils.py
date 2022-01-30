@@ -1,6 +1,5 @@
 """
 """
-import argparse
 import logging
 import numpy as np
 import os
@@ -68,4 +67,3 @@ def initialize_logging(
     logger.addHandler(console_handler)
 
     return logger
-

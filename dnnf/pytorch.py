@@ -3,13 +3,12 @@ import torch
 import torch.nn.functional as F
 
 from dnnv.nn import Operation, OperationVisitor, operations
-from typing import Iterable
 
 
 def convert(operations):
     converter = PytorchConverter()
     for op in operations:
-        result = converter.visit(op)
+        _ = converter.visit(op)
     return PytorchModel(converter.operations, converter.inputs, operations)
 
 
@@ -45,6 +44,7 @@ class OperationGraph(dict):
     def __init__(self, device=torch.device("cpu")):
         super().__init__()
         self.device = device
+        self.cache = {}
 
     def __getitem__(self, index) -> torch.Tensor:
         if isinstance(index, np.ndarray):
@@ -53,13 +53,18 @@ class OperationGraph(dict):
             return super().get(index, None)
         if not isinstance(index, Operation):
             return index
+        if index in self.cache:
+            return self.cache[index]
         item = super().__getitem__(index)
         if callable(item):
-            return item(self)
+            self.cache[index] = item(self)
+            return self.cache[index]
         if isinstance(item, np.ndarray):
-            return torch.from_numpy(item).to(self.device)
+            self.cache[index] = torch.from_numpy(item).to(self.device)
+            return self.cache[index]
         if isinstance(item, torch.Tensor):
-            return item
+            self.cache[index] = item
+            return self.cache[index]
         raise TypeError(f"Unsupported type: {type(item).__name__}")
 
 

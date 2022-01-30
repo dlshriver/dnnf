@@ -124,7 +124,9 @@ class HPolyProperty(Property):
         op_graphs = (
             n.value for n in sum((list(v.networks) for v in self.output_vars), [])
         )
-        self.op_graph = OpGraphMerger().merge(op_graphs)
+        merger = OpGraphMerger()
+        self.op_graph = merger.merge(op_graphs)
+        self.input_ops = tuple(merger.input_operations.values())
 
     def __repr__(self):
         strs = []
@@ -165,7 +167,11 @@ class HPolyProperty(Property):
         ):
             return False
         y = self.op_graph(cex)
-        flat_output = np.hstack([y.copy().flatten(), cex.copy().flatten()])
+        if isinstance(y, tuple):
+            flat_y = np.hstack([y_.flatten() for y_ in y])
+        else:
+            flat_y = y.flatten()
+        flat_output = np.hstack([flat_y, cex.flatten()])
         for hs in self.hpoly:
             hy = hs[0, :-1] @ flat_output
             b = hs[0, -1]
@@ -193,15 +199,9 @@ class HPolyProperty(Property):
                 ]
             new_output_op = operations.Concat(output_operations, axis=axis)
         if axis == 0:
-            flat_input_ops = [
-                operations.Reshape(o, (-1,))
-                for o in self.op_graph[:1].output_operations
-            ]
+            flat_input_ops = [operations.Reshape(o, (-1,)) for o in self.input_ops]
         else:
-            flat_input_ops = [
-                operations.Flatten(o, axis=axis)
-                for o in self.op_graph[:1].output_operations
-            ]
+            flat_input_ops = [operations.Flatten(o, axis=axis) for o in self.input_ops]
         new_output_op = operations.Concat([new_output_op] + flat_input_ops, axis=axis)
         dtype = OperationGraph([new_output_op]).output_details[0].dtype
 
