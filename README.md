@@ -16,43 +16,43 @@ DNNF can be installed using pip by running:
   $ pip install dnnf
 ```
 
-This will install the last version uploaded to [PyPI](https://pypi.org/project/dnnf/). To install the most recent changes from GitHub, run:
+This will install the latest release of DNNF on [PyPI](https://pypi.org/project/dnnf/). To install the most recent changes from GitHub, run:
 
 ```bash
-  $ pip install git+https://github.com/dlshriver/DNNF.git@main
+  $ pip install git+https://github.com/dlshriver/dnnf.git@main
 ```
 
 To install the cleverhans or foolbox backends, run the above command with the option `--install-option="--extras-require=cleverhans,foolbox"` included.
 
-*Note:* installation with pip will not install the TensorFuzz falsification backend. Currently this backend is only available through manual installation or the provided docker image.
+> Installation with pip will not install the TensorFuzz falsification backend. Currently this backend is only available through manual installation or the provided docker image.
 
 ### Source Install
 
-The required dependencies for installation from source are:
+The required dependencies to install DNNF from source are:
+
+- python3
+
+The optional tensorfuzz backend also requires:
 
 - git
-- virtualenv
-- python3.7
-- python3.7-dev
 - python2.7
+- virtualenv
 
-Please ensure that these dependencies are installed prior to running the rest of the installation script.
+If you do not plan to use tensorfuzz, then these dependencies are not required.
+Please ensure that the required dependencies are installed prior to running the installation script.
 For example, on a fresh Ubuntu 20.04 system, the dependencies can be installed using apt as follows:
 
 ```bash
   $ sudo add-apt-repository ppa:deadsnakes/ppa
   $ sudo apt-get update
-  $ sudo apt-get install python3.7
-  $ sudo apt-get install python3.7-dev
-  $ sudo apt-get install python2.7
-  $ sudo apt-get install virtualenv
-  $ sudo apt-get install git
+  $ sudo apt-get install git python2.7 python3.7 virtualenv
 ```
 
-To install DNNF in the local directory with all available backend falsification methods, download this repo and run the provided installation script:
+To install DNNF in the local directory, download this repo and run the provided installation script,
+optionally specifying which backends to include during installation:
 
 ```bash
-  $ ./install.sh --include-cleverhans --include-foolbox --include-tensorfuzz
+  $ ./install.sh [--include-cleverhans] [--include-foolbox] [--include-tensorfuzz]
 ```
 
 To see additional installation options, use the `-h` option.
@@ -65,7 +65,7 @@ We provide a pre-built docker image containing DNNF, available on [Docker Hub](h
 
 ```bash
   $ docker pull dlshriver/dnnf
-  $ docker run -it dlshriver/dnnf
+  $ docker run --rm -it dlshriver/dnnf
   (.venv) dnnf@hostname:~$ dnnf -h
 ```
 
@@ -73,11 +73,15 @@ To build a docker image with the latest changes to DNNF, run:
 
 ```bash
   $ docker build . -t dlshriver/dnnf
-  $ docker run -it dlshriver/dnnf
+  $ docker run --rm -it dlshriver/dnnf
   (.venv) dnnf@hostname:~$ dnnf -h
 ```
 
 ## Execution
+
+DNNF can be run on correctness problems specified using [ONNX](https://onnx.ai) and [DNNP](https://docs.dnnv.org/en/stable/dnnp/introduction.html). 
+DNNP is the same property specification language used by the [DNNV](https://github.com/dlshriver/dnnv) verifier framework. 
+A description of this specification language can be found in the [DNNV documentation](https://docs.dnnv.org/en/stable/dnnp/introduction.html).
 
 To execute DNNF, first activate the virtual environment with:
 
@@ -101,38 +105,61 @@ To see additional options, run:
   $ dnnf -h
 ```
 
+To see the currently available falsification backends, use the `--long-help` option.
+
 
 ### Running on the Benchmarks
 
-We provide the property and network benchmarks used in our evaluation [here](http://cs.virginia.edu/~dls2fc/dnnf_benchmarks.tar.gz).
+We provide several DNN verification benchmarks in DNNP and ONNX formats in [dlshriver/dnnv-benchmarks](https://github.com/dlshriver/dnnv-benchmarks). 
+This benchmark repository includes both the DNNF-GHPR and the DNNF-CIFAR-EQ benchmarks introduced by DNNF!
 
-To execute DNNF on a problem in one of the benchmarks, first navigate to the desired benchmark directory in `artifacts` (i.e., `acas_benchmark`, `neurifydave_benchmark`, or `ghpr_benchmark`). Then run DNNF as specified above. For example, to run DNNF with the Projected Gradient Descent adversarial attack from [cleverhans](https://github.com/tensorflow/cleverhans) on an ACAS property and network, run:
+To execute DNNF on a problem in one of the benchmarks, 
+first navigate to the desired benchmark directory in `benchmarks` (e.g., `DNNF-GHPR`, `DNNF-GHPR`). 
+Then run DNNF as specified above. 
+For example, to run DNNF with the Projected Gradient Descent adversarial attack from [cleverhans](https://github.com/tensorflow/cleverhans) on an DNNF-GHPR property and network,
+run:
 
 ```bash
-  $ cd artifacts/acas_benchmark
-  $ dnnf properties/property_2.py --network N onnx/N_3_1.onnx --backend cleverhans.ProjectedGradientDescent
+  $ cd benchmarks/DNNF-GHPR
+  $ dnnf properties/dronet_property_0.py --network N onnx/dronet.onnx --backend cleverhans.projected_gradient_descent
 ```
 
 Which will produce output similar to:
 
 ```bash
-  Falsifying: Forall(x0, (((x0 <= [[ 0.68 0.5  0.5  0.5 -0.45]]) & ([[ 0.6 -0.5 -0.5  0.45 -0.5 ]] <= x0)) ==> (numpy.argmax(N(x0)) != 0)))
+  Falsifying: Forall(x, (((0 <= x) & (x <= 1) & (N[(slice(2, -3, None), 1)](x) <= -2.1972245773362196)) ==> ((-0.08726646259971647 <= N[(slice(2, -1, None), 0)](x)) & (N[(slice(2, -1, None), 0)](x) <= 0.08726646259971647))))
 
   dnnf
     result: sat
-    time: 2.6067
+    falsification time: 0.6901
+    total time: 2.3260
 ```
 
 The available backends for falsification are:
 
-- `cleverhans.LBFGS`, which also requires setting parameters `--set cleverhans.LBFGS y_target "[[-1.0, 0.0]]"`
-- `cleverhans.BasicIterativeMethod`
-- `cleverhans.FastGradientMethod`
-- `cleverhans.DeepFool`, which also requires setting parameters `--set cleverhans.DeepFool nb_candidate 2`
-- `cleverhans.ProjectedGradientDescent`
-- `tensorfuzz`
+  - [CleverHans](https://github.com/tensorflow/cleverhans)
+    
+    - `cleverhans.carlini_wagner_l2`
+    - `cleverhans.fast_gradient_method`
+    - `cleverhans.hop_skip_jump_attack`
+    - `cleverhans.projected_gradient_descent`
+    - `cleverhans.spsa`
 
-If a property uses parameters, then the parameter value can be set using `--prop.PARAMETER=VALUE`, e.g., `--prop.epsilon=1`, similar to [DNNV](https://github.com/dlshriver/DNNV).
+  - [FoolBox](https://github.com/bethgelab/foolbox)
+
+    - `foolbox.ATTACK` where `ATTACK` is the name of an adversarial attack from 
+      [this list](https://foolbox.readthedocs.io/en/stable/modules/attacks.html#module-foolbox.attacks)
+
+  - [TensorFuzz](https://github.com/brain-research/tensorfuzz)
+
+    - ``tensorfuzz``
+
+Attack specific parameters can be set using the `--set BACKEND NAME VALUE` option.
+For example, to set the `nb_iter` parameter of the `cleverhans.projected_gradient_descent` attack to 40 steps,
+you can specify `--set cleverhans.projected_gradient_descent nb_iter 40`.
+
+If a property uses parameters, then the parameter value can be set using `--prop.PARAMETER=VALUE`, 
+e.g., `--prop.epsilon=1`, similar to DNNV.
 
 
 ## Acknowledgements
