@@ -158,7 +158,6 @@ class PytorchConverter(OperationVisitor):
             weights = operation_graph[operation.w]
             bias = operation_graph[operation.b]
             assert np.all(operation.dilations == 1)
-            assert np.all(operation.group == 1)
             pad_top, pad_left, pad_bottom, pad_right = operation.pads
 
             x = (
@@ -167,7 +166,13 @@ class PytorchConverter(OperationVisitor):
             padded_x = F.pad(
                 x, (pad_left, pad_right, pad_top, pad_bottom), "constant", 0
             )
-            result = F.conv2d(padded_x, weights, bias, tuple(operation.strides))
+            result = F.conv2d(
+                padded_x,
+                weights,
+                bias,
+                tuple(operation.strides),
+                groups=operation.group,
+            )
             return result
 
         return conv
