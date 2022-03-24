@@ -1,27 +1,27 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 authors:
-- family-names: "Shriver"
-  given-names: "David"
-  orcid: "https://orcid.org/0000-0003-0208-6517"
-  website: "https://davidshriver.me"
-title: "DNNF"
-version: 0.1.3
-date-released: 2021-03-22
-url: "https://github.com/dlshriver/DNNF"
-preferred-citation:
-  type: conference-paper
-  authors:
   - family-names: "Shriver"
     given-names: "David"
     orcid: "https://orcid.org/0000-0003-0208-6517"
     website: "https://davidshriver.me"
-  - family-names: "Elbaum"
-    given-names: "Sebastian"
-    orcid: "https://orcid.org/0000-0001-9592-1352"
-  - family-names: "Dwyer"
-    given-names: "Matthew"
-    orcid: "https://orcid.org/0000-0002-1937-1544"
+title: "DNNF"
+version: 0.1.4
+date-released: 2022-03-24
+url: "https://github.com/dlshriver/DNNF"
+preferred-citation:
+  type: conference-paper
+  authors:
+    - family-names: "Shriver"
+      given-names: "David"
+      orcid: "https://orcid.org/0000-0003-0208-6517"
+      website: "https://davidshriver.me"
+    - family-names: "Elbaum"
+      given-names: "Sebastian"
+      orcid: "https://orcid.org/0000-0001-9592-1352"
+    - family-names: "Dwyer"
+      given-names: "Matthew"
+      orcid: "https://orcid.org/0000-0002-1937-1544"
   doi: "10.1109/ICSE43902.2021.00036"
   title: "Reducing DNN Properties to Enable Falsification with Adversarial Attacks"
   conference:
