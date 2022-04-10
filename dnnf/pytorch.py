@@ -420,3 +420,22 @@ class PytorchConverter(OperationVisitor):
             return result
 
         return unsqueeze
+
+    def visit_OutputSelect(self, operation: operations.OutputSelect):
+        self.generic_visit(operation)
+
+        def outputselect(operation_graph):
+            op = operation_graph[operation.operation]
+            return op[operation.index]
+
+        return outputselect
+
+    def visit_Split(self, operation: operations.Split):
+        self.generic_visit(operation)
+
+        def split(operation_graph):
+            x = operation_graph[operation.x]
+            result = torch.split(x, operation.split, operation.axis)
+            return result
+
+        return split
