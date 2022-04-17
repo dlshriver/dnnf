@@ -430,7 +430,7 @@ class PytorchConverter(OperationVisitor):
 
         return outputselect
 
-    def visit_Split(self, operation: operations.Split):
+    def visit_Split(self, operation: "operations.Split"):
         self.generic_visit(operation)
 
         def split(operation_graph):
