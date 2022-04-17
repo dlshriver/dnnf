@@ -16,7 +16,10 @@ DNNF can be installed using pip by running:
   $ pip install dnnf
 ```
 
-This will install the latest release of DNNF on [PyPI](https://pypi.org/project/dnnf/). To install the most recent changes from GitHub, run:
+This will install the latest release of DNNF on [PyPI](https://pypi.org/project/dnnf/).
+To install the optional falsification backends, you can replace `dnnf` in the above command with `dnnf[BACKENDS]`, 
+where `BACKENDS` is a comma separated list of the backends you wish to include (i.e., `cleverhans` or `foolbox`).
+To install the most recent changes from GitHub, run:
 
 ```bash
   $ pip install git+https://github.com/dlshriver/dnnf.git@main
