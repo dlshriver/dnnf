@@ -92,8 +92,8 @@ def main(args: argparse.Namespace):
         ]
         layer_sizes = [int(v) for v in next_line(network_file).split(",")]
         _ = next_line(network_file)
-        mins = np.array([float(v) for v in next_line(network_file).split(",")])
-        maxs = np.array([float(v) for v in next_line(network_file).split(",")])
+        _ = np.array([float(v) for v in next_line(network_file).split(",")])  # mins
+        _ = np.array([float(v) for v in next_line(network_file).split(",")])  # maxs
         means = np.array([float(v) for v in next_line(network_file).split(",")])
         ranges = np.array([float(v) for v in next_line(network_file).split(",")])
 
@@ -116,7 +116,15 @@ def main(args: argparse.Namespace):
             activation = "relu"
             if layer == num_layers:
                 activation = "affine"
-            layers.append(build_linear(W, b, activation, input_shape, output_shape,))
+            layers.append(
+                build_linear(
+                    W,
+                    b,
+                    activation,
+                    input_shape,
+                    output_shape,
+                )
+            )
             input_shape = output_shape
             layer += 1
     if not args.drop_normalization:
@@ -127,7 +135,6 @@ def main(args: argparse.Namespace):
                 means[input_size:], ranges[input_size:], input_shape, output_shape
             )
         )
-        input_shape = output_shape
     pytorch_model = nn.Sequential(*layers)
     print(pytorch_model)
     dummy_input = torch.ones([1, input_size])

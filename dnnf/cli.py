@@ -25,10 +25,6 @@ class LongHelp(argparse.Action):
 
     def __call__(self, parser, namespace, values, option_string=None):
         parser.print_help()
-        parser.exit()
-
-    def __call__(self, parser, namespace, values, option_string=None):
-        parser.print_help()
         available_backends = "\n  ".join(
             backends.get_backend_choices(group_equivalent=True)
         )
@@ -113,7 +109,7 @@ def literal_type(parser, name, x):
         raise parser.error(f"Too many values for parameter {name}.")
     try:
         return ast.literal_eval(x[0])
-    except:
+    except Exception:
         return x[0]
 
 

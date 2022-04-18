@@ -45,6 +45,12 @@ class OperationGraph(dict):
         super().__init__()
         self.device = device
         self.cache = {}
+        self.__hash__ = super().__hash__
+
+    def __eq__(self, other):
+        if not isinstance(other, OperationGraph):
+            return False
+        return super().__eq__(other) and self.device == other.device
 
     def __getitem__(self, index) -> torch.Tensor:
         if isinstance(index, np.ndarray):

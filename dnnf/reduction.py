@@ -5,7 +5,7 @@ import logging
 import numpy as np
 
 from abc import abstractmethod, ABC
-from typing import Dict, Iterator, List, Optional, Tuple, Type, Union
+from typing import Dict, Iterator, List, Optional, Sequence, Tuple, Type, Union
 
 from dnnv.nn import OperationGraph, OperationTransformer
 from dnnv.properties import (
@@ -61,7 +61,7 @@ class OpGraphMerger(OperationTransformer):
         self.output_operations = []
         self.input_operations = {}
 
-    def merge(self, operation_graphs: List[OperationGraph]):
+    def merge(self, operation_graphs: Sequence[OperationGraph]):
         for op_graph in operation_graphs:
             for op in op_graph.output_operations:
                 self.output_operations.append(self.visit(op))
@@ -234,7 +234,7 @@ class ExpressionDetailsInference(ExpressionVisitor):
         self.types: Dict[Expression, Optional[Union[Type, np.dtype]]] = {}
 
     def visit_Add(self, expression: Add):
-        tmp_array: Optional[np.array] = None
+        tmp_array: Optional[np.ndarray] = None
         for expr in expression:
             self.visit(expr)
             if tmp_array is None:
@@ -298,19 +298,15 @@ class ExpressionDetailsInference(ExpressionVisitor):
             self.shapes[expression] = ()
             self.types[expression] = type(value)
         elif isinstance(value, (list, tuple)):
-            try:
-                arr = np.asarray(value)
-                self.shapes[expression] = arr.shape
-                self.types[expression] = arr.dtype
-            except:
-                self.shapes[expression] = None
-                self.types[expression] = None
+            arr = np.asarray(value)
+            self.shapes[expression] = arr.shape
+            self.types[expression] = arr.dtype
         else:
             self.shapes[expression] = None
             self.types[expression] = None
 
     def visit_Multiply(self, expression: Multiply):
-        tmp_array: Optional[np.array] = None
+        tmp_array: Optional[np.ndarray] = None
         for expr in expression:
             self.visit(expr)
             if tmp_array is None:
@@ -375,8 +371,8 @@ class HPolyPropertyBuilder:
         self.num_output_vars = num_output_vars
         self.num_vars = num_input_vars + num_output_vars
 
-        self.coefficients: Dict[Expression, np.array] = {}
-        self.var_indices: Dict[Expression, Tuple[Expression, np.array]] = {}
+        self.coefficients: Dict[Expression, np.ndarray] = {}
+        self.var_indices: Dict[Expression, Tuple[Expression, np.ndarray]] = {}
         for v in self.variables:
             shape = self.expr_details.shapes[v]
             assert shape is not None
