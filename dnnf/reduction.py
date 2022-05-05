@@ -78,8 +78,18 @@ class HPolyProperty(Property):
     def __init__(self, expr_details, input_vars, output_vars, hpoly, lb, ub):
         self.expr_details = expr_details
         self.input_vars = input_vars
-        self.output_vars = output_vars
-        self.variables = output_vars + input_vars
+        self.output_vars = list(set(output_vars))
+        # print(f"{len(self.output_vars)=}")
+        # for ov in range(len(self.output_vars)):
+        #     print(f"{type(self.output_vars[ov])}")
+        #     print(f"output_vars[{ov}]={self.output_vars[ov]}")
+        #
+        # print(f"{len(self.input_vars)=}")
+        # for ov in range(len(self.input_vars)):
+        #     print(f"{type(self.input_vars[ov])}")
+        #     print(f"input_vars[{ov}]={self.input_vars[ov]}")
+
+        self.variables = self.output_vars + self.input_vars
 
         self.hpoly = hpoly
         self.lb = lb
@@ -93,6 +103,7 @@ class HPolyProperty(Property):
             )
 
         for v in self.output_vars:
+
             i = self.var_i_map[v]
             offset = self.var_offsets[i]
             shape = self.expr_details.shapes[v]
@@ -159,14 +170,17 @@ class HPolyProperty(Property):
             strs.append(" + ".join(hs_str) + f" <= {b}")
         return "\n".join(strs)
 
-    def validate_counter_example(self, cex: np.ndarray) -> bool:
+    def validate_counter_example(self, cex: np.ndarray, other_inputs=None) -> bool:
         if np.any(np.isnan(cex)):
             return False
         if np.any(self.input_lower_bounds[0] > cex) or np.any(
             self.input_upper_bounds < cex
         ):
             return False
-        y = self.op_graph(cex)
+        if other_inputs is not None:
+            y = self.op_graph(cex, *other_inputs)
+        else:
+            y = self.op_graph(cex)
         if isinstance(y, tuple):
             flat_y = np.hstack([y_.flatten() for y_ in y])
         else:
@@ -199,9 +213,11 @@ class HPolyProperty(Property):
                 ]
             new_output_op = operations.Concat(output_operations, axis=axis)
         if axis == 0:
-            flat_input_ops = [operations.Reshape(o, (-1,)) for o in self.input_ops]
+            flat_input_ops = [operations.Reshape(o, (-1,)) for o in self.input_ops[:1]]
         else:
-            flat_input_ops = [operations.Flatten(o, axis=axis) for o in self.input_ops]
+            flat_input_ops = [
+                operations.Flatten(o, axis=axis) for o in self.input_ops[:1]
+            ]
         new_output_op = operations.Concat([new_output_op] + flat_input_ops, axis=axis)
         dtype = OperationGraph([new_output_op]).output_details[0].dtype
 
@@ -217,9 +233,9 @@ class HPolyProperty(Property):
         for i in range(k):
             W_mask[i, 0] = 1
         new_output_op = operations.Add(operations.MatMul(new_output_op, W_mask), b_mask)
-        new_op_graph = (
-            OpGraphMerger().merge([OperationGraph([new_output_op])]).simplify()
-        )
+        new_op_graph = OpGraphMerger().merge(
+            [OperationGraph([new_output_op])]
+        )  # .simplify()
         return new_op_graph
 
 
@@ -356,7 +372,7 @@ class HPolyPropertyBuilder:
     ):
         self.expr_details = expr_details
         self.input_vars = input_vars
-        self.output_vars = output_vars
+        self.output_vars = list(set(output_vars))
         self.variables = self.output_vars + self.input_vars
         self.var_i_map = {v: i for i, v in enumerate(self.variables)}
         self.var_offsets = [0]
@@ -366,10 +382,10 @@ class HPolyPropertyBuilder:
             )
 
         num_input_vars = 0
-        for x in input_vars:
+        for x in self.input_vars:
             num_input_vars += np.product(self.expr_details.shapes[x])
         num_output_vars = 0
-        for y in output_vars:
+        for y in self.output_vars:
             num_output_vars += np.product(self.expr_details.shapes[y])
         self.num_input_vars = num_input_vars
         self.num_output_vars = num_output_vars
@@ -466,10 +482,17 @@ class HPolyReduction(Reduction):
             self.logger.debug("DISJUNCT: %s", disjunct)
             input_variables = disjunct.variables
             networks = disjunct.networks
+            # output_variables = [
+            #     network(x)
+            #     for network, x in itertools.product(networks, input_variables)
+            #     if network(x) in self.expression_details.shapes
+            # ]
             output_variables = [
-                network(x)
-                for network, x in itertools.product(networks, input_variables)
-                if network(x) in self.expression_details.shapes
+                expr
+                for expr in disjunct.iter()
+                if isinstance(expr, Call)
+                and isinstance(expr.function, Network)
+                and expr in self.expression_details.shapes
             ]
 
             self._property_builder = HPolyPropertyBuilder(

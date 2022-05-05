@@ -26,6 +26,20 @@ def _init_logging():
     )
 
 
+def get_concrete_inputs(output_vars, kwargs):
+    outvars = []
+    for y in output_vars:
+        for a in y.args:
+            if a.is_concrete:
+                a = torch.from_numpy(a.value)
+                if kwargs.get("cuda", False):
+                    a.to("cuda")
+                # else:
+                #     a.to("cpu")
+                outvars.append(a)
+    return tuple(outvars)
+
+
 def falsify(
     phi: Expression,
     backend: Union[str, List[str]] = "pgd",
@@ -64,7 +78,7 @@ def falsify(
         parameters: Dict[str, Any] = backend_parameters.get(backend_method, {})
         method_n_starts = parameters.pop("n_starts", n_starts)
         for i, prop in enumerate(reduction.reduce_property(phi)):
-            logger.debug(f"subproblem {backend_method}_{i}")
+            logger.info(f"subproblem {backend_method}_{i}")
             tasks.append(
                 falsify_model(
                     method,
@@ -106,6 +120,9 @@ async def falsify_model(
 
     start_i = 0
     loop = asyncio.get_event_loop()
+    print(f"FALSIFY_MODEL {_TASK_ID=} {start_i=}")
+    outvars = get_concrete_inputs(model.prop.output_vars, kwargs)
+    outvars = tuple(i.numpy() for i in outvars)
     while n_starts < 0 or start_i < n_starts:
         counter_example = await loop.run_in_executor(
             executor, partial(method, model, **kwargs)
@@ -113,7 +130,7 @@ async def falsify_model(
         if counter_example is not None:
             logger.info(f"FALSIFIED ({_TASK_ID}) at restart: {start_i}")
             for network, result in zip(
-                model.prop.output_vars, model.prop.op_graph(counter_example)
+                model.prop.output_vars, model.prop.op_graph(counter_example, *outvars)
             ):
                 logger.debug("%s -> %s", network, result)
             return counter_example
@@ -123,19 +140,24 @@ async def falsify_model(
             logger.info("RESTART(%s): %d", _TASK_ID, start_i)
 
 
-def pgd(model: FalsificationModel, n_steps=100, **kwargs):
+def pgd(model: FalsificationModel, n_steps=1000, **kwargs):
+    print(f"PERFORMING PGD {n_steps=}")
     logger = logging.getLogger(__name__)
 
     if kwargs.get("cuda", False):
         model.model.to("cuda")
     x = model.sample()
+    outvars = get_concrete_inputs(model.prop.output_vars, kwargs)
+    # print(f"{len(outvars)=}")
+    # for o in range(len(outvars)):
+    #     print(f"{outvars[o]=}")
     for step_i in range(n_steps):
         x.requires_grad = True
-        y = model(x)
+        y = model(x, *outvars)
         flat_y = y.flatten()
         if any(flat_y[0] <= flat_y[i] for i in range(1, len(flat_y))):
             counter_example = x.cpu().detach().numpy()
-            if model.validate(counter_example):
+            if model.validate(counter_example, other_inputs=outvars):
                 logger.info("FOUND COUNTEREXAMPLE")
                 logger.info("FALSIFIED at step %d", step_i)
                 return counter_example
@@ -173,7 +195,8 @@ def cleverhans(
 
     initial_x = torch.full_like(lb, 0.5)
     _x = normalizer(initial_x).detach().numpy()
-    if model.validate(_x):
+    outvars = get_concrete_inputs(model.prop.output_vars, kwargs)
+    if model.validate(_x, other_inputs=outvars):
         logger.info("FOUND COUNTEREXAMPLE immediately")
         return _x
 
@@ -187,7 +210,7 @@ def cleverhans(
     attack = cleverhans_backend[variant]
     result = attack(pytorch_model, initial_x.to(device), **parameters)
     counter_example = normalizer(result).detach().numpy()
-    if model.validate(counter_example):
+    if model.validate(counter_example, other_inputs=outvars):
         logger.info("FOUND COUNTEREXAMPLE")
         return counter_example
 
@@ -219,7 +242,8 @@ def foolbox(
 
     initial_input = torch.full_like(lb, 0.5)
     _x = normalizer(initial_input).detach().numpy()
-    if model.validate(_x):
+    outvars = get_concrete_inputs(model.prop.output_vars, kwargs)
+    if model.validate(_x, other_inputs=outvars):
         logger.info("FOUND COUNTEREXAMPLE immediately")
         return _x
 
@@ -233,10 +257,10 @@ def foolbox(
         parameters = {}
     attack = getattr(foolbox_backend.attacks, variant)(**parameters)
     _, advs, success = attack(fmodel, finput, flabel, epsilons=epsilons)
-
+    outvars = get_concrete_inputs(model.prop.output_vars, kwargs)
     for _, adv, _ in zip(success, advs, epsilons):
         counter_example = normalizer(adv).cpu().detach().numpy()
-        if model.validate(counter_example):
+        if model.validate(counter_example, other_inputs=outvars):
             logger.info("FOUND COUNTEREXAMPLE")
             return counter_example
         logger.debug("Counter example could not be validated")
@@ -304,6 +328,7 @@ def tensorfuzz(model: FalsificationModel, n_steps=100, **kwargs):
             counter_example = np.load(f"{tmpdir}/cex.npy")[None].astype(
                 model.input_details[0].dtype
             )
-            if model.validate(counter_example):
+            outvars = get_concrete_inputs(model.prop.output_vars, kwargs)
+            if model.validate(counter_example, other_inputs=outvars):
                 logger.info("FOUND COUNTEREXAMPLE")
                 return counter_example

@@ -1,5 +1,7 @@
 """
 """
+import sys
+
 import numpy as np
 import os
 import time
@@ -41,25 +43,27 @@ def main(
     extra_args: Optional[List[str]] = None,
     **kwargs,
 ):
-    os.setpgrp()
-
+    # os.setpgrp()
+    sys.setrecursionlimit(5000)
     phi = parse_property(property, format=prop_format, args=extra_args)
-    print("Falsifying:", phi)
+    print("FALSIFYING:", phi)
     for name, network in networks.items():
+        print(f"PARSING NETWORK: {network.__str__()}")
         dnn = parse_network(network, net_format="onnx")
         if kwargs["debug"]:
             print(f"Network {name}:")
             dnn.pprint()
             print()
+        print(f"CONCRETIZING: {phi}")
         phi.concretize(**{name: dnn})
     print()
-
+    print(f"FALSIFYING...")
     start_t = time.time()
     result = falsify(phi, **kwargs)
     end_t = time.time()
     print("dnnf")
     if result["violation"] is not None:
-        print("  result: sat")
+        print("  result: unsafe")
         if save_violation is not None:
             np.save(save_violation, result["violation"])
     else:

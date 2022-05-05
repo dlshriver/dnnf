@@ -99,5 +99,6 @@ class FalsificationModel:
             x = x + F.normalize(gradients) * epsilon
         return x.detach()
 
-    def validate(self, x):
-        return self.prop.validate_counter_example(x)
+    def validate(self, x, other_inputs=None):
+        other_inputs = tuple(i.numpy() for i in other_inputs)
+        return self.prop.validate_counter_example(x, other_inputs=other_inputs)
