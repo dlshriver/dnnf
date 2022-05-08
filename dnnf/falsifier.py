@@ -6,6 +6,7 @@ import shlex
 import subprocess as sp
 import tempfile
 import time
+import warnings
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from functools import partial
 from typing import Any, Dict, List, Type, Union
@@ -259,16 +260,17 @@ def tensorfuzz(model: FalsificationModel, **_):
         lb_filename = f"{tmpdir}/lb.npy"
         ub_filename = f"{tmpdir}/ub.npy"
 
-        dummy_x = torch.from_numpy(lb)
-        torch.onnx.export(
-            model.model,
-            dummy_x,
-            model_filename,
-            input_names=["input"],
-            dynamic_axes={"input": [0]},
-        )
-        np.save(lb_filename, lb[0])
-        np.save(ub_filename, ub[0])
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            torch.onnx.export(
+                model.model,
+                lb,
+                model_filename,
+                input_names=["input"],
+                dynamic_axes={"input": {0: "batch"}},
+            )
+        np.save(lb_filename, lb[0].numpy())
+        np.save(ub_filename, ub[0].numpy())
 
         cmd = (
             f"tensorfuzz.sh --model={model_filename}"
@@ -276,33 +278,13 @@ def tensorfuzz(model: FalsificationModel, **_):
         )
         logger.debug("Running: %s", cmd)
 
-        proc = sp.Popen(
-            shlex.split(cmd), stdout=sp.PIPE, stderr=sp.PIPE, encoding="utf8"
+        proc = sp.run(
+            shlex.split(cmd), stdout=sp.PIPE, stderr=sp.STDOUT, encoding="utf8"
         )
-        assert proc.stderr is not None
-        assert proc.stdout is not None
-        stdout_lines: List[str] = []
-        stderr_lines: List[str] = []
-        while proc.poll() is None:
-            for (name, stream, lines) in [
-                ("STDOUT", proc.stdout, stdout_lines),
-                ("STDERR", proc.stderr, stderr_lines),
-            ]:
-                ready, _, _ = select.select([stream], [], [], 0)
-                if not ready:
-                    continue
-                line = stream.readline()
-                if line == "":
-                    continue
-                lines.append(line)
-                logger.debug("{TENSORFUZZ (%s)}: %s", name, line.strip())
-        for line in proc.stdout.readlines():
-            logger.debug("{TENSORFUZZ (STDOUT)}: %s", line.strip())
-        stdout_lines.extend(stdout_lines)
-        for line in proc.stderr.readlines():
-            logger.debug("{TENSORFUZZ (STDERR)}: %s", line.strip())
-        stderr_lines.extend(stderr_lines)
-        if "Fuzzing succeeded" in "\n".join(stderr_lines):
+        for line in proc.stdout.split("\n"):
+            logger.debug("[TENSORFUZZ]: %s", line.strip())
+
+        if "Fuzzing succeeded" in "\n".join(proc.stdout):
             counter_example = np.load(f"{tmpdir}/cex.npy")[None].astype(
                 model.input_details[0].dtype
             )

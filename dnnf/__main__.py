@@ -1,5 +1,7 @@
 """
 """
+import logging
+import sys
 import time
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -21,6 +23,8 @@ def main(
     extra_args: Optional[List[str]] = None,
     **kwargs,
 ):
+    logger = logging.getLogger(__name__)
+
     phi = parse_property(property_path, format=prop_format, args=extra_args)
     print("Falsifying:", phi)
     for name, network in networks.items():
@@ -31,6 +35,10 @@ def main(
             print()
         phi.concretize(**{name: dnn})
     print()
+
+    if extra_args is not None and len(extra_args) > 0:
+        logger.error("Unused arguments: %r", extra_args)
+        sys.exit(1)
 
     start_t = time.time()
     result = falsify(phi, **kwargs)
@@ -50,12 +58,10 @@ def main(
 def __main__():
     args, extra_args = parse_args()
     set_random_seed(args.seed)
-    logger = initialize_logging(
+    initialize_logging(
         __package__, verbose=args.verbose, quiet=args.quiet, debug=args.debug
     )
-    main(**vars(args), extra_args=extra_args)
-    if extra_args is not None and len(extra_args) > 0:
-        logger.warning("Unused arguments: %r", extra_args)
+    return main(**vars(args), extra_args=extra_args)
 
 
 if __name__ == "__main__":
