@@ -24,4 +24,4 @@ jobs:
           pip install black isort
       - name: Check style
         run: |
-          ./scripts/style --check
+          ./scripts/style.sh --check
