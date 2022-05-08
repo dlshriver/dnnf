@@ -225,8 +225,7 @@ class PytorchConverter(OperationVisitor):
         def flatten(operation_graph):
             x = operation_graph[operation.x]
             axis = operation_graph[operation.axis]
-            new_shape = (1, -1) if axis == 0 else (int(np.prod(x.shape[:axis])), -1)
-            result = x.reshape(new_shape)
+            result = x.flatten(axis)
             return result
 
         return flatten
