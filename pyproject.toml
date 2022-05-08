@@ -27,19 +27,20 @@ all = [
     # foolbox
     "foolbox~=3.3",
     # dev
-    "black~=21.7b0",
-    "mypy~=0.910",
+    "black~=22.3",
+    "isort~=5.10",
+    "mypy~=0.950",
     # docs
-    "sphinx~=4.0",
-    "furo",
+    "sphinx~=4.5",
+    "furo~=2022.4",
     # test
     "coverage~=5.5",
     "pytest~=6.2",
 ]
 cleverhans = ["cleverhans~=4.0"]
 foolbox = ["foolbox~=3.3"]
-dev = ["black~=21.7b0", "mypy~=0.910"]
-docs = ["sphinx~=4.0", "furo"]
+dev = ["black~=22.3", "isort~=5.10", "mypy~=0.950"]
+docs = ["sphinx~=4.5", "furo~=2022.4"]
 test = ["coverage~=5.5", "pytest~=6.2"]
 
 [project.urls]
