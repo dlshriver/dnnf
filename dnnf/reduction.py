@@ -461,11 +461,12 @@ class HPolyReduction(Reduction):
         for disjunct in canonical_expr:
             self.logger.debug("DISJUNCT: %s", disjunct)
             input_variables = disjunct.variables
-            networks = disjunct.networks
             output_variables = [
-                network(x)
-                for network, x in itertools.product(networks, input_variables)
-                if network(x) in self.expression_details.shapes
+                expr
+                for expr in disjunct.iter()
+                if isinstance(expr, Call)
+                and isinstance(expr.function, Network)
+                and expr in self.expression_details.shapes
             ]
 
             self._property_builder = HPolyPropertyBuilder(
