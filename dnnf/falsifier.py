@@ -1,7 +1,6 @@
 import asyncio
 import logging
 import multiprocessing as mp
-import select
 import shlex
 import subprocess as sp
 import tempfile
