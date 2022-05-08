@@ -2,6 +2,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+from .pytorch import convert
 from .reduction import HPolyProperty
 
 
@@ -44,9 +45,7 @@ class FalsificationModel:
         )
 
     def as_pytorch(self):
-        from .pytorch import convert
-
-        return convert(self.op_graph.output_operations).eval()
+        return convert(self.op_graph).eval()
 
     def as_tf(self):
         return self.op_graph.as_tf()
@@ -78,7 +77,7 @@ class FalsificationModel:
         )
         return x.detach()
 
-    def step(self, x, y, alpha=0.05):
+    def step(self, x, y):
         loss = self.loss(y)
         loss.backward()
         gradients = x.grad
@@ -89,7 +88,7 @@ class FalsificationModel:
         gradients[(x == lb) & neg_grads] = 0
         gradients[(x == ub) & pos_grads] = 0
         if gradients.abs().max().item() < 1e-12:
-            return
+            return None
         lb = self.input_lower_bound
         ub = self.input_upper_bound
         epsilon = (ub - lb) / 2
@@ -101,3 +100,6 @@ class FalsificationModel:
 
     def validate(self, x):
         return self.prop.validate_counter_example(x)
+
+
+__all__ = ["FalsificationModel"]

@@ -1,21 +1,19 @@
 from __future__ import annotations
 
-import itertools
 import logging
-import numpy as np
-
-from abc import abstractmethod, ABC
+from abc import ABC, abstractmethod
 from typing import Dict, Iterator, List, Optional, Sequence, Tuple, Type, Union
 
+import numpy as np
 from dnnv.nn import OperationGraph, OperationTransformer
 from dnnv.properties import (
     Add,
     And,
-    Constant,
-    Expression,
-    Exists,
-    Forall,
     Call,
+    Constant,
+    Exists,
+    Expression,
+    Forall,
     LessThan,
     LessThanOrEqual,
     Multiply,
@@ -228,21 +226,19 @@ class ExpressionDetailsInference(ExpressionVisitor):
         super().__init__()
         self.reduction_error = reduction_error
         # TODO : make types and shapes symbolic so we don't need to order expressions
-        self.shapes: Dict[
-            Expression, Optional[Union[Tuple[int, ...], List[Tuple[int, ...]]]]
-        ] = {}
-        self.types: Dict[Expression, Optional[Union[Type, np.dtype]]] = {}
+        self.shapes: Dict[Expression, Tuple[int, ...]] = {}
+        self.types: Dict[Expression, Union[Type, np.dtype]] = {}
 
     def visit_Add(self, expression: Add):
         tmp_array: Optional[np.ndarray] = None
         for expr in expression:
             self.visit(expr)
+            shape = self.shapes[expr]
+            dtype = self.types[expr]
             if tmp_array is None:
-                tmp_array = np.empty(self.shapes[expr], dtype=self.types[expr])
+                tmp_array = np.empty(shape, dtype=dtype)
             else:
-                tmp_array = tmp_array + np.empty(
-                    self.shapes[expr], dtype=self.types[expr]
-                )
+                tmp_array = tmp_array + np.empty(shape, dtype=dtype)
         if tmp_array is not None:
             self.shapes[expression] = tuple(tmp_array.shape)
             self.types[expression] = tmp_array.dtype
@@ -262,10 +258,11 @@ class ExpressionDetailsInference(ExpressionVisitor):
             if len(expression.kwargs) > 0:
                 raise self.reduction_error(
                     "Unsupported property:"
-                    f" Executing networks with keyword arguments is not currently supported"
+                    " Executing networks with keyword arguments"
+                    " is not currently supported"
                 )
             for arg, d in zip(expression.args, input_details):
-                if arg in self.shapes and self.shapes[arg] is not None:
+                if arg in self.shapes:
                     arg_shape = self.shapes[arg]
                     assert arg_shape is not None
                     if any(
@@ -275,14 +272,18 @@ class ExpressionDetailsInference(ExpressionVisitor):
                             f"Invalid property: variable with multiple shapes: '{arg}'"
                         )
                 self.shapes[arg] = tuple(i if i > 0 else 1 for i in d.shape)
+                self.types[arg] = d.dtype
                 self.visit(arg)
             output_details = expression.function.value.output_details
             if len(output_details) == 1:
                 self.shapes[expression] = output_details[0].shape
                 self.types[expression] = output_details[0].dtype
             else:
-                self.shapes[expression] = [d.shape for d in output_details]
-                self.types[expression] = [d.dtype for d in output_details]
+                raise RuntimeError(
+                    "Multiple output operations are not currently supported"
+                    " by this method."
+                    " If you encounter this error, please open an issue on GitHub."
+                )
         else:
             raise self.reduction_error(
                 "Unsupported property:"
@@ -294,27 +295,24 @@ class ExpressionDetailsInference(ExpressionVisitor):
         if isinstance(value, np.ndarray):
             self.shapes[expression] = value.shape
             self.types[expression] = value.dtype
-        elif isinstance(value, (int, float)):
-            self.shapes[expression] = ()
-            self.types[expression] = type(value)
         elif isinstance(value, (list, tuple)):
             arr = np.asarray(value)
             self.shapes[expression] = arr.shape
             self.types[expression] = arr.dtype
         else:
-            self.shapes[expression] = None
-            self.types[expression] = None
+            self.shapes[expression] = ()
+            self.types[expression] = type(value)
 
     def visit_Multiply(self, expression: Multiply):
         tmp_array: Optional[np.ndarray] = None
         for expr in expression:
             self.visit(expr)
+            shape = self.shapes[expr]
+            dtype = self.types[expr]
             if tmp_array is None:
-                tmp_array = np.empty(self.shapes[expr], dtype=self.types[expr])
+                tmp_array = np.empty(shape, dtype=dtype)
             else:
-                tmp_array = tmp_array * np.empty(
-                    self.shapes[expr], dtype=self.types[expr]
-                )
+                tmp_array = tmp_array * np.empty(shape, dtype=dtype)
         if tmp_array is not None:
             self.shapes[expression] = tuple(tmp_array.shape)
             self.types[expression] = tmp_array.dtype
@@ -329,18 +327,11 @@ class ExpressionDetailsInference(ExpressionVisitor):
             return
         index = expression.index.value
         expr_shape = self.shapes[expression.expr]
-        assert expr_shape is not None
         for i, d in zip(index, expr_shape):
             if not isinstance(i, slice) and i >= d:
                 raise self.reduction_error(f"Index out of bounds: {expression}")
         self.shapes[expression] = tuple(np.empty(expr_shape)[index].shape)
         self.types[expression] = self.types[expression.expr]
-
-    def visit_Symbol(self, expression: Symbol):
-        if expression not in self.shapes:
-            self.shapes[expression] = None
-        if expression not in self.types:
-            self.types[expression] = None
 
 
 class HPolyPropertyBuilder:
@@ -371,14 +362,21 @@ class HPolyPropertyBuilder:
         self.num_output_vars = num_output_vars
         self.num_vars = num_input_vars + num_output_vars
 
-        self.coefficients: Dict[Expression, np.ndarray] = {}
-        self.var_indices: Dict[Expression, Tuple[Expression, np.ndarray]] = {}
+        self.coefficients: Dict[
+            Expression, Union[np.ndarray, Sequence[np.ndarray]]
+        ] = {}
+        self.var_indices: Dict[
+            Expression,
+            Union[
+                Tuple[Expression, np.ndarray], Sequence[Tuple[Expression, np.ndarray]]
+            ],
+        ] = {}
         for v in self.variables:
             shape = self.expr_details.shapes[v]
             assert shape is not None
             assert isinstance(shape, tuple)
             var_ids = np.full(shape, self.var_i_map[v])
-            indices = np.array([i for i in np.ndindex(shape)]).reshape(
+            indices = np.array([i for i in np.ndindex(*shape)]).reshape(
                 shape + (len(shape),)
             )
             self.var_indices[v] = (var_ids, indices)
@@ -441,12 +439,13 @@ class HPolyReduction(Reduction):
     def reduce_property(self, phi: Expression) -> Iterator[HPolyProperty]:
         if isinstance(phi, Exists):
             raise NotImplementedError(
-                "HPolyReduction currently supports only universally quantified properties"
-            )  # TODO : add support
+                "HPolyReduction currently supports only"
+                " universally quantified specifications"
+            )
         expr = phi
         while isinstance(expr, Forall):
             expr = expr.expression
-        if self.negate or True:
+        if self.negate:
             expr = ~expr
         canonical_expr = expr.canonical()
         assert isinstance(canonical_expr, Or)
@@ -461,13 +460,15 @@ class HPolyReduction(Reduction):
         for disjunct in canonical_expr:
             self.logger.debug("DISJUNCT: %s", disjunct)
             input_variables = disjunct.variables
-            output_variables = [
-                expr
-                for expr in disjunct.iter()
-                if isinstance(expr, Call)
-                and isinstance(expr.function, Network)
-                and expr in self.expression_details.shapes
-            ]
+            output_variables = list(
+                set(
+                    expr
+                    for expr in disjunct.iter()
+                    if isinstance(expr, Call)
+                    and isinstance(expr.function, Network)
+                    and expr in self.expression_details.shapes
+                )
+            )
 
             self._property_builder = HPolyPropertyBuilder(
                 self.expression_details, list(input_variables), output_variables
@@ -478,7 +479,7 @@ class HPolyReduction(Reduction):
             self._property_builder = None
 
     def visit(self, expression: Expression):
-        method_name = "visit_%s" % expression.__class__.__name__
+        method_name = f"visit_{type(expression).__name__}"
         visitor = getattr(self, method_name, self.generic_visit)
         return visitor(expression)
 
@@ -493,9 +494,11 @@ class HPolyReduction(Reduction):
         assert self._property_builder is not None
         for expr in expression:
             self.visit(expr)
-            coeffs.append(self._property_builder.coefficients[expr])
+            coeff = self._property_builder.coefficients[expr]
+            assert isinstance(coeff, np.ndarray)
+            coeffs.append(coeff)
             var_indices.append(self._property_builder.var_indices[expr])
-        self._property_builder.var_indices[expression] = tuple(zip(*var_indices))  # type: ignore
+        self._property_builder.var_indices[expression] = tuple(zip(*var_indices))
         self._property_builder.coefficients[expression] = coeffs
 
     def visit_Multiply(self, expression: Multiply):
@@ -528,10 +531,12 @@ class HPolyReduction(Reduction):
                 coeff_value = np.broadcast_to(coeff_value, broadcast_shape)
             except ValueError:
                 raise self.reduction_error(
-                    f"Mismatched shapes in Multiply expression: {coeff_shape} and {variable_shape}"
+                    "Mismatched shapes in Multiply expression:"
+                    f" {coeff_shape} and {variable_shape}"
                 )
-        var_ids, indices = self._property_builder.var_indices[variable]
-        self._property_builder.var_indices[expression] = (var_ids, indices)
+        self._property_builder.var_indices[
+            expression
+        ] = self._property_builder.var_indices[variable]
         self._property_builder.coefficients[expression] = coeff_value
 
     def visit_Subscript(self, expression: Subscript):
@@ -550,7 +555,7 @@ class HPolyReduction(Reduction):
             self.visit(expr)
 
     def visit_Call(self, expression: Call):
-        if not expression in self.expression_details.shapes:
+        if expression not in self.expression_details.shapes:
             raise self.reduction_error(f"Unknown shape for expression: {expression}")
 
     def visit_Constant(self, expression: Constant):
@@ -571,8 +576,8 @@ class HPolyReduction(Reduction):
 
         assert len(lhs_coeffs) == len(lhs_vars)
         assert len(lhs_vars) == len(lhs_indices)
-        assert np.all(v.shape == lhs_vars[0].shape for v in lhs_vars[1:])
-        assert np.all(i.shape == lhs_indices[0].shape for i in lhs_indices[1:])
+        assert all(v.shape == lhs_vars[0].shape for v in lhs_vars[1:])
+        assert all(i.shape == lhs_indices[0].shape for i in lhs_indices[1:])
 
         rhs_value = np.full(rhs_shape, rhs.value)
         if lhs_shape != rhs_shape:
@@ -584,7 +589,8 @@ class HPolyReduction(Reduction):
                 rhs_value = np.broadcast_to(rhs_value, broadcast_shape)
             except ValueError:
                 raise self.reduction_error(
-                    f"Mismatched shapes in {type(expression).__name__} expression: {lhs_shape} and {rhs_shape}"
+                    f"Mismatched shapes in {type(expression).__name__} expression:"
+                    f" {lhs_shape} and {rhs_shape}"
                 )
 
         for idx in np.ndindex(lhs_vars[0].shape):
@@ -596,7 +602,7 @@ class HPolyReduction(Reduction):
                 indices,
                 coeffs,
                 rhs_value[idx],
-                is_open=(type(expression) is LessThan),
+                is_open=isinstance(expression, LessThan),
             )
 
     def visit_LessThanOrEqual(self, expression: LessThanOrEqual):

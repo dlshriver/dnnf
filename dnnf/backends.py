@@ -1,7 +1,9 @@
-import numpy as np
 import os
-
 from functools import partial
+from types import ModuleType
+from typing import Dict, MutableSequence, Optional, Sequence, Type
+
+import numpy as np
 
 # check for cleverhans
 try:
@@ -67,7 +69,7 @@ try:
         "PGD": pgd,
         "spsa": spsa_func,
     }
-    cleverhans_backend_choices = (
+    cleverhans_backend_choices: Sequence[Sequence[str]] = (
         ("basic_iterative_method", "BasicIterativeMethod", "BIM"),
         ("carlini_wagner_l2",),
         ("fast_gradient_method", "FastGradientMethod", "FGM"),
@@ -81,14 +83,16 @@ except ImportError:
 
 # check for foolbox
 try:
-    import foolbox as foolbox_backend
+    import foolbox
 
-    foolbox_attacks = {}
-    for name in dir(foolbox_backend.attacks):
-        value = getattr(foolbox_backend.attacks, name)
+    foolbox_backend: Optional[ModuleType] = foolbox
+
+    foolbox_attacks: Dict[Type[foolbox.Attack], MutableSequence[str]] = {}
+    for name in dir(foolbox.attacks):
+        value = getattr(foolbox.attacks, name)
         if (
             isinstance(value, type)
-            and issubclass(value, foolbox_backend.Attack)
+            and issubclass(value, foolbox.Attack)
             and name != "Attack"
         ):
             if value not in foolbox_attacks:
@@ -130,4 +134,4 @@ def get_backend_choices(group_equivalent=False):
     return choices
 
 
-__all__ = ["cleverhans_backend", "foolbox_backend"]
+__all__ = ["cleverhans_backend", "foolbox_backend", "get_backend_choices"]

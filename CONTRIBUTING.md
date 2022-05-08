@@ -16,6 +16,8 @@ Be sure to include a **title** and **clear description** with as much relevant i
 
 Open a new GitHub pull request with the patch.
 Ensure the PR description clearly describes the problem and solution. Include the relevant issue number if applicable.
+Please ensure the code has been formatted with [black](https://github.com/psf/black) and [isort](https://github.com/PyCQA/isort) prior to making the pull request.
+This can be done by using the provided `scripts/style.sh` script with the `--format` option.
 <!-- 
 TODO: Describe coding conventions, etc.
 -->

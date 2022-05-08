@@ -1,25 +1,28 @@
 import asyncio
 import logging
 import multiprocessing as mp
-import numpy as np
-import torch
+import select
+import shlex
+import subprocess as sp
+import tempfile
 import time
-
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
-from dnnv.properties import Expression
 from functools import partial
 from typing import Any, Dict, List, Type, Union
 
-from .backends import *
-from .reduction import HPolyReduction
+import numpy as np
+import torch
+from dnnv.properties import Expression
+
+from .backends import cleverhans_backend, foolbox_backend
+from .cli import parse_args
 from .model import FalsificationModel
+from .reduction import HPolyReduction
+from .utils import initialize_logging, set_random_seed
 
 
-def _init_logging():
-    from .cli import parse_args
-    from .utils import initialize_logging, set_random_seed
-
-    args, extra_args = parse_args()
+def _initializer():
+    args, _ = parse_args()
     set_random_seed(args.seed)
     initialize_logging(
         __package__, verbose=args.verbose, quiet=args.quiet, debug=args.debug
@@ -48,7 +51,7 @@ def falsify(
         executor = ProcessPoolExecutor
         executor_params = {
             "mp_context": mp.get_context("spawn"),
-            "initializer": _init_logging,
+            "initializer": _initializer,
         }
     pool = executor(max_workers=n_proc, **executor_params)  # type: ignore
     tasks = []
@@ -64,7 +67,7 @@ def falsify(
         parameters: Dict[str, Any] = backend_parameters.get(backend_method, {})
         method_n_starts = parameters.pop("n_starts", n_starts)
         for i, prop in enumerate(reduction.reduce_property(phi)):
-            logger.debug(f"subproblem {backend_method}_{i}")
+            logger.debug("subproblem %s_%d", backend_method, i)
             tasks.append(
                 falsify_model(
                     method,
@@ -72,7 +75,7 @@ def falsify(
                     parameters=parameters,
                     n_starts=method_n_starts,
                     executor=pool,
-                    _TASK_ID=f"{backend_method}_{i}",
+                    _dnnf_task_id=f"{backend_method}_{i}",
                     **kwargs,
                 )
             )
@@ -80,12 +83,12 @@ def falsify(
     start_t = time.time()
     counter_example = asyncio.run(wait_for_first(tasks, **kwargs))
     end_t = time.time()
-    logger.info(f"falsification time: {end_t - start_t:.4f}")
+    logger.info("falsification time: %.4f", end_t - start_t)
 
     return {"violation": counter_example, "time": end_t - start_t}
 
 
-async def wait_for_first(tasks, sequential=False, **kwargs):
+async def wait_for_first(tasks, sequential=False, **_):
     if sequential:
         for task in tasks:
             result = await task
@@ -102,7 +105,7 @@ async def falsify_model(
     method, model: FalsificationModel, executor=None, n_starts=-1, **kwargs
 ):
     logger = logging.getLogger(__name__)
-    _TASK_ID = kwargs.get("_TASK_ID", "")
+    _dnnf_task_id = kwargs.get("_dnnf_task_id", "")
 
     start_i = 0
     loop = asyncio.get_event_loop()
@@ -111,7 +114,7 @@ async def falsify_model(
             executor, partial(method, model, **kwargs)
         )
         if counter_example is not None:
-            logger.info(f"FALSIFIED ({_TASK_ID}) at restart: {start_i}")
+            logger.info("FALSIFIED (%s) at restart: %d", _dnnf_task_id, start_i)
             for network, result in zip(
                 model.prop.output_vars, model.prop.op_graph(counter_example)
             ):
@@ -120,7 +123,7 @@ async def falsify_model(
         await asyncio.sleep(0)  # yield to other tasks
         start_i += 1
         if (start_i) % kwargs.get("restart_log_freq", 10) == 0:
-            logger.info("RESTART(%s): %d", _TASK_ID, start_i)
+            logger.info("RESTART(%s): %d", _dnnf_task_id, start_i)
 
 
 def pgd(model: FalsificationModel, n_steps=100, **kwargs):
@@ -143,6 +146,7 @@ def pgd(model: FalsificationModel, n_steps=100, **kwargs):
         if x is None:
             break
         x = model.project_input(x)
+    return None
 
 
 def cleverhans(
@@ -225,7 +229,7 @@ def foolbox(
 
     pytorch_model = torch.nn.Sequential(normalizer, model.model).eval().to(device)
     finput = initial_input.to(device)
-    flabel = torch.zeros(1, dtype=np.long, device=device)
+    flabel = torch.zeros(1, dtype=torch.int64, device=device)
     fmodel = foolbox_backend.PyTorchModel(pytorch_model, bounds=(0, 1), device=device)
     epsilons = [1.0]
 
@@ -242,12 +246,7 @@ def foolbox(
         logger.debug("Counter example could not be validated")
 
 
-def tensorfuzz(model: FalsificationModel, n_steps=100, **kwargs):
-    import select
-    import shlex
-    import subprocess as sp
-    import tempfile
-
+def tensorfuzz(model: FalsificationModel, **_):
     logger = logging.getLogger(__name__)
 
     lb = model.input_lower_bound
@@ -271,7 +270,10 @@ def tensorfuzz(model: FalsificationModel, n_steps=100, **kwargs):
         np.save(lb_filename, lb[0])
         np.save(ub_filename, ub[0])
 
-        cmd = f"tensorfuzz.sh --model={model_filename} --lb={lb_filename} --ub={ub_filename} --label=0"
+        cmd = (
+            f"tensorfuzz.sh --model={model_filename}"
+            f" --lb={lb_filename} --ub={ub_filename} --label=0"
+        )
         logger.debug("Running: %s", cmd)
 
         proc = sp.Popen(
@@ -293,12 +295,12 @@ def tensorfuzz(model: FalsificationModel, n_steps=100, **kwargs):
                 if line == "":
                     continue
                 lines.append(line)
-                logger.debug(f"{{TENSORFUZZ ({name})}}: {line.strip()}")
+                logger.debug("{TENSORFUZZ (%s)}: %s", name, line.strip())
         for line in proc.stdout.readlines():
-            logger.debug(f"{{TENSORFUZZ (STDOUT)}}: {line.strip()}")
+            logger.debug("{TENSORFUZZ (STDOUT)}: %s", line.strip())
         stdout_lines.extend(stdout_lines)
         for line in proc.stderr.readlines():
-            logger.debug(f"{{TENSORFUZZ (STDERR)}}: {line.strip()}")
+            logger.debug("{TENSORFUZZ (STDERR)}: %s", line.strip())
         stderr_lines.extend(stderr_lines)
         if "Fuzzing succeeded" in "\n".join(stderr_lines):
             counter_example = np.load(f"{tmpdir}/cex.npy")[None].astype(
@@ -307,3 +309,6 @@ def tensorfuzz(model: FalsificationModel, n_steps=100, **kwargs):
             if model.validate(counter_example):
                 logger.info("FOUND COUNTEREXAMPLE")
                 return counter_example
+
+
+__all__ = ["falsify"]

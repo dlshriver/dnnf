@@ -1,21 +1,24 @@
+from __future__ import annotations
+
 import numpy as np
 import torch
 import torch.nn.functional as F
+from dnnv.nn import Operation, OperationGraph, OperationVisitor, operations
 
-from dnnv.nn import Operation, OperationVisitor, operations
 
-
-def convert(operations):
+def convert(op_graph: OperationGraph) -> PytorchModel:
     converter = PytorchConverter()
-    for op in operations:
+    for op in op_graph.output_operations:
         _ = converter.visit(op)
-    return PytorchModel(converter.operations, converter.inputs, operations)
+    return PytorchModel(
+        converter.operations, converter.inputs, op_graph.output_operations
+    )
 
 
 class PytorchModel(torch.nn.Module):
-    def __init__(self, op_graph, inputs, outputs):
+    def __init__(self, op_cache, inputs, outputs):
         super().__init__()
-        self.op_graph = op_graph
+        self.op_cache = op_cache
         self.inputs = inputs
         self.outputs = outputs
         self.device = torch.device("cpu")
@@ -25,12 +28,12 @@ class PytorchModel(torch.nn.Module):
             raise ValueError("Incorrect number of inputs")
         if any(x_.device.type != self.device.type for x_ in x):
             raise ValueError("Input on incorrect device.")
-        op_graph = OperationGraph(device=self.device)
-        op_graph.update(self.op_graph)
-        op_graph.update(kwargs)
+        op_cache = OpCache(device=self.device)
+        op_cache.update(self.op_cache)
+        op_cache.update(kwargs)
         for input_op, x_ in zip(self.inputs, x):
-            op_graph[input_op] = x_
-        outputs = tuple(op_graph[output] for output in self.outputs)
+            op_cache[input_op] = x_
+        outputs = tuple(op_cache[output] for output in self.outputs)
         if squeeze and len(outputs) == 1:
             return outputs[0]
         return outputs
@@ -40,7 +43,7 @@ class PytorchModel(torch.nn.Module):
         return super().to(device, *args, **kwargs)
 
 
-class OperationGraph(dict):
+class OpCache(dict):
     def __init__(self, device=torch.device("cpu")):
         super().__init__()
         self.device = device
@@ -48,7 +51,7 @@ class OperationGraph(dict):
         self.__hash__ = super().__hash__
 
     def __eq__(self, other):
-        if not isinstance(other, OperationGraph):
+        if not isinstance(other, OpCache):
             return False
         return super().__eq__(other) and self.device == other.device
 
@@ -80,17 +83,16 @@ class PytorchConverter(OperationVisitor):
         self.operations = {}
         self.inputs = []
 
-    def visit(self, operation):
+    def visit(self, operation: Operation):
         if operation not in self.operations:
             result = super().visit(operation)
             self.operations[operation] = result
         return self.operations[operation]
 
-    def generic_visit(self, operation):
-        if not hasattr(self, "visit_%s" % operation.__class__.__name__):
+    def generic_visit(self, operation: Operation):
+        if not hasattr(self, f"visit_{operation}"):
             raise ValueError(
-                "Pytorch converter not implemented for operation type %s"
-                % operation.__class__.__name__
+                f"Pytorch converter not implemented for operation type {operation}"
             )
         return super().generic_visit(operation)
 
@@ -313,6 +315,15 @@ class PytorchConverter(OperationVisitor):
 
         return mul
 
+    def visit_OutputSelect(self, operation: operations.OutputSelect):
+        self.generic_visit(operation)
+
+        def outputselect(operation_graph):
+            op = operation_graph[operation.operation]
+            return op[operation.index]
+
+        return outputselect
+
     def visit_Relu(self, operation: operations.Relu):
         self.generic_visit(operation)
 
@@ -386,6 +397,16 @@ class PytorchConverter(OperationVisitor):
 
         return softmax
 
+    def visit_Split(self, operation: "operations.Split"):
+        self.generic_visit(operation)
+
+        def split(operation_graph):
+            x = operation_graph[operation.x]
+            result = torch.split(x, operation.split, operation.axis)
+            return result
+
+        return split
+
     def visit_Sub(self, operation: operations.Sub):
         self.generic_visit(operation)
 
@@ -427,21 +448,5 @@ class PytorchConverter(OperationVisitor):
 
         return unsqueeze
 
-    def visit_OutputSelect(self, operation: operations.OutputSelect):
-        self.generic_visit(operation)
 
-        def outputselect(operation_graph):
-            op = operation_graph[operation.operation]
-            return op[operation.index]
-
-        return outputselect
-
-    def visit_Split(self, operation: "operations.Split"):
-        self.generic_visit(operation)
-
-        def split(operation_graph):
-            x = operation_graph[operation.x]
-            result = torch.split(x, operation.split, operation.axis)
-            return result
-
-        return split
+__all__ = ["convert", "PytorchConverter"]

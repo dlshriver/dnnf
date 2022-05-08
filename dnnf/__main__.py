@@ -1,49 +1,27 @@
 """
 """
-import numpy as np
-import os
 import time
-
-from dnnv.nn import parse as parse_network
-from dnnv.properties import parse as parse_property
 from pathlib import Path
 from typing import Dict, List, Optional
+
+import numpy as np
+from dnnv.nn import parse as parse_network
+from dnnv.properties import parse as parse_property
 
 from .cli import parse_args
 from .falsifier import falsify
 from .utils import initialize_logging, set_random_seed
 
-from dnnv.nn.graph import OperationGraph
-from dnnv.nn.utils import TensorDetails
-
-orig_input_details = OperationGraph.input_details
-
-
-@property
-def new_input_details(self):
-    if self._input_details is None:
-        _input_details = orig_input_details.fget(self)
-        self._input_details = tuple(
-            TensorDetails(tuple(i if i >= 0 else 1 for i in d.shape), d.dtype)
-            for d in _input_details
-        )
-    return self._input_details
-
-
-OperationGraph.input_details = new_input_details
-
 
 def main(
-    property: Path,
+    property_path: Path,
     networks: Dict[str, Path],
     prop_format: Optional[str] = None,
     save_violation: Optional[Path] = None,
     extra_args: Optional[List[str]] = None,
     **kwargs,
 ):
-    os.setpgrp()
-
-    phi = parse_property(property, format=prop_format, args=extra_args)
+    phi = parse_property(property_path, format=prop_format, args=extra_args)
     print("Falsifying:", phi)
     for name, network in networks.items():
         dnn = parse_network(network, net_format="onnx")
