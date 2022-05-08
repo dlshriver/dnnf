@@ -278,7 +278,11 @@ def tensorfuzz(model: FalsificationModel, **_):
         logger.debug("Running: %s", cmd)
 
         proc = sp.run(
-            shlex.split(cmd), stdout=sp.PIPE, stderr=sp.STDOUT, encoding="utf8"
+            shlex.split(cmd),
+            stdout=sp.PIPE,
+            stderr=sp.STDOUT,
+            encoding="utf8",
+            check=True,
         )
         for line in proc.stdout.split("\n"):
             logger.debug("[TENSORFUZZ]: %s", line.strip())
@@ -290,6 +294,7 @@ def tensorfuzz(model: FalsificationModel, **_):
             if model.validate(counter_example):
                 logger.info("FOUND COUNTEREXAMPLE")
                 return counter_example
+    return None
 
 
 __all__ = ["falsify"]
