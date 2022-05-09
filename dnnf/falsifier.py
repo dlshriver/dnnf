@@ -42,7 +42,7 @@ def falsify(
 
     counter_example = None
     reduction = HPolyReduction()
-    executor_params = {}
+    executor_params: Dict[str, Any] = {}
     if n_proc == 1:
         executor: Union[
             Type[ThreadPoolExecutor], Type[ProcessPoolExecutor]
@@ -81,7 +81,10 @@ def falsify(
             )
     logger.info("Starting Falsifier")
     start_t = time.time()
-    counter_example = asyncio.run(wait_for_first(tasks, **kwargs))
+    try:
+        counter_example = asyncio.run(wait_for_first(tasks, **kwargs))
+    except KeyboardInterrupt:
+        counter_example = None
     end_t = time.time()
     logger.info("falsification time: %.4f", end_t - start_t)
 
@@ -116,7 +119,8 @@ async def falsify_model(
         if counter_example is not None:
             logger.info("FALSIFIED (%s) at restart: %d", _dnnf_task_id, start_i)
             for network, result in zip(
-                model.prop.output_vars, model.prop.op_graph(counter_example)
+                model.prop.input_output_info["output_names"],
+                model.prop.op_graph(counter_example),
             ):
                 logger.debug("%s -> %s", network, result)
             return counter_example

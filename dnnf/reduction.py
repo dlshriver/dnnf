@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import itertools
 import logging
 from abc import ABC, abstractmethod
-from typing import Dict, Iterator, List, Optional, Sequence, Tuple, Type, Union
+from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple, Type, Union
 
 import numpy as np
 from dnnv.nn import OperationGraph, OperationTransformer
+from dnnv.nn.utils import TensorDetails
 from dnnv.properties import (
     Add,
     And,
@@ -48,10 +50,6 @@ class HPolyReductionError(ReductionError):
     pass
 
 
-class HPoly:
-    pass
-
-
 class OpGraphMerger(OperationTransformer):
     # TODO : merge common layers (e.g. same normalization, reshaping of input)
     def __init__(self):
@@ -73,86 +71,121 @@ class OpGraphMerger(OperationTransformer):
 
 
 class HPolyProperty(Property):
-    def __init__(self, expr_details, input_vars, output_vars, hpoly, lb, ub):
-        self.expr_details = expr_details
-        self.input_vars = input_vars
-        self.output_vars = output_vars
-        self.variables = output_vars + input_vars
+    @classmethod
+    def build(
+        cls,
+        expr_details: ExpressionDetailsInference,
+        input_vars: Sequence[Expression],
+        output_vars: Sequence[Expression],
+        hpoly: Sequence[np.ndarray],
+        lb: np.ndarray,
+        ub: np.ndarray,
+    ):
+        hpoly = list(hpoly)
+        variables = tuple(output_vars) + tuple(input_vars)
+        var_i_map = {v: i for i, v in enumerate(variables)}
+        var_offsets = [0]
+        for v in variables:
+            var_offsets.append(var_offsets[-1] + np.product(expr_details.shapes[v]))
 
-        self.hpoly = hpoly
-        self.lb = lb
-        self.ub = ub
-
-        self.var_i_map = {v: i for i, v in enumerate(self.variables)}
-        self.var_offsets = [0]
-        for v in self.variables:
-            self.var_offsets.append(
-                self.var_offsets[-1] + np.product(self.expr_details.shapes[v])
-            )
-
-        for v in self.output_vars:
-            i = self.var_i_map[v]
-            offset = self.var_offsets[i]
-            shape = self.expr_details.shapes[v]
-            for idx in np.ndindex(shape):
+        for v in output_vars:
+            i = var_i_map[v]
+            offset = var_offsets[i]
+            shape = expr_details.shapes[v]
+            for idx in np.ndindex(*shape):
                 flat_idx = offset + np.ravel_multi_index(idx, shape)
-                if not np.isneginf(self.lb[flat_idx]):
-                    hs = np.zeros((1, self.lb.shape[0] + 1))
+                if not np.isneginf(lb[flat_idx]):
+                    hs = np.zeros((1, lb.shape[0] + 1))
                     hs[0, flat_idx] = -1
-                    hs[0, -1] = -self.lb[flat_idx]
-                    self.hpoly.append(hs)
-                if not np.isposinf(self.ub[flat_idx]):
-                    hs = np.zeros((1, self.ub.shape[0] + 1))
+                    hs[0, -1] = -lb[flat_idx]
+                    hpoly.append(hs)
+                if not np.isposinf(ub[flat_idx]):
+                    hs = np.zeros((1, ub.shape[0] + 1))
                     hs[0, flat_idx] = 1
-                    hs[0, -1] = self.ub[flat_idx]
-                    self.hpoly.append(hs)
+                    hs[0, -1] = ub[flat_idx]
+                    hpoly.append(hs)
 
-        self.input_lower_bounds = []
-        self.input_upper_bounds = []
-        for v in self.input_vars:
-            i = self.var_i_map[v]
-            offset = self.var_offsets[i]
-            next_offset = self.var_offsets[i + 1]
-            shape = self.expr_details.shapes[v]
-            lb = self.lb[offset : next_offset + 1].reshape(shape)
-            ub = self.ub[offset : next_offset + 1].reshape(shape)
-            self.input_lower_bounds.append(lb)
-            self.input_upper_bounds.append(ub)
+        input_lower_bounds = []
+        input_upper_bounds = []
+        for v in input_vars:
+            i = var_i_map[v]
+            offset = var_offsets[i]
+            next_offset = var_offsets[i + 1]
+            shape = expr_details.shapes[v]
+            lower_bound = lb[offset : next_offset + 1].reshape(shape)
+            upper_bound = ub[offset : next_offset + 1].reshape(shape)
+            input_lower_bounds.append(lower_bound)
+            input_upper_bounds.append(upper_bound)
 
-        op_graphs = (
-            n.value for n in sum((list(v.networks) for v in self.output_vars), [])
-        )
+        op_graphs = [n.value for n in sum((list(v.networks) for v in output_vars), [])]
         merger = OpGraphMerger()
-        self.op_graph = merger.merge(op_graphs)
-        self.input_ops = tuple(merger.input_operations.values())
+        op_graph = merger.merge(op_graphs)
+        input_ops = tuple(merger.input_operations.values())
+
+        input_output_info = {
+            "input_names": [str(expr) for expr in input_vars],
+            "input_details": [expr_details[expr] for expr in input_vars],
+            "output_names": [str(expr) for expr in output_vars],
+            "output_details": [expr_details[expr] for expr in output_vars],
+        }
+
+        return cls(
+            op_graph,
+            hpoly,
+            input_lower_bounds,
+            input_upper_bounds,
+            input_ops,
+            input_output_info,
+        )
+
+    def __init__(
+        self,
+        op_graph: OperationGraph,
+        hpoly: Sequence[np.ndarray],
+        input_lower_bounds: Sequence[np.ndarray],
+        input_upper_bounds: Sequence[np.ndarray],
+        input_ops: Sequence[np.ndarray],
+        input_output_info: Dict[str, Any],
+    ):
+        self.op_graph = op_graph
+        self.hpoly = hpoly
+        self.input_lower_bounds = input_lower_bounds
+        self.input_upper_bounds = input_upper_bounds
+        self.input_ops = input_ops
+        self.input_output_info = input_output_info
 
     def __repr__(self):
         strs = []
-        for x in self.input_vars:
-            for idx in np.ndindex(self.expr_details.shapes[x]):
-                offset = self.var_offsets[self.var_i_map[x]]
-                lb = self.lb[offset + np.product(idx)]
-                ub = self.ub[offset + np.product(idx)]
-                v = x[idx]
-                strs.append(f"{lb} <= {v} <= {ub}")
-        for y in self.output_vars:
-            for idx in np.ndindex(self.expr_details.shapes[y]):
-                offset = self.var_offsets[self.var_i_map[y]]
-                lb = self.lb[offset + np.product(idx)]
-                ub = self.ub[offset + np.product(idx)]
-                v = y[idx]
-                strs.append(f"{lb} <= {v} <= {ub}")
+        for i, (x, (shape, _)) in enumerate(
+            zip(
+                self.input_output_info["input_names"],
+                self.input_output_info["input_details"],
+            )
+        ):
+            for idx in np.ndindex(*shape):
+                lb = self.input_lower_bounds[i][idx]
+                ub = self.input_upper_bounds[i][idx]
+                strs.append(f"{lb} <= {x}[{idx}] <= {ub}")
         for hs in self.hpoly:
             hs_str = []
-            for v, i in self.var_i_map.items():
-                offset = self.var_offsets[i]
-                shape = self.expr_details.shapes[v]
+            offset = 0
+            for v, (shape, _) in itertools.chain(
+                zip(
+                    self.input_output_info["output_names"],
+                    self.input_output_info["output_details"],
+                ),
+                zip(
+                    self.input_output_info["input_names"],
+                    self.input_output_info["input_details"],
+                ),
+            ):
                 for idx in np.ndindex(shape):
                     flat_idx = np.ravel_multi_index(idx, shape) + offset
                     c = hs[0, flat_idx]
                     if abs(c) <= 1e-100:
                         continue
-                    hs_str.append(f"{c}*{v[idx]}")
+                    hs_str.append(f"{c}*{v}[{idx}]")
+                offset = flat_idx + 1
             b = hs[0, -1]
             strs.append(" + ".join(hs_str) + f" <= {b}")
         return "\n".join(strs)
@@ -228,6 +261,9 @@ class ExpressionDetailsInference(ExpressionVisitor):
         # TODO : make types and shapes symbolic so we don't need to order expressions
         self.shapes: Dict[Expression, Tuple[int, ...]] = {}
         self.types: Dict[Expression, Union[Type, np.dtype]] = {}
+
+    def __getitem__(self, expression: Expression) -> TensorDetails:
+        return TensorDetails(self.shapes[expression], self.types[expression])
 
     def visit_Add(self, expression: Add):
         tmp_array: Optional[np.ndarray] = None
@@ -412,7 +448,7 @@ class HPolyPropertyBuilder:
                 self.interval_constraints[0][flat_index] = max(b / coeff, current_bound)
 
     def build(self) -> HPolyProperty:
-        return HPolyProperty(
+        return HPolyProperty.build(
             self.expr_details,
             self.input_vars,
             self.output_vars,
@@ -613,3 +649,13 @@ class HPolyReduction(Reduction):
 
     def visit_Symbol(self, expression: Symbol):
         pass
+
+
+__all__ = [
+    "HPolyProperty",
+    "HPolyReduction",
+    "HpolyReductionError",
+    "Property",
+    "Reduction",
+    "ReductionError",
+]

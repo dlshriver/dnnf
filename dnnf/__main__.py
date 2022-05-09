@@ -41,7 +41,10 @@ def main(
         sys.exit(1)
 
     start_t = time.time()
-    result = falsify(phi, **kwargs)
+    try:
+        result = falsify(phi, **kwargs)
+    except KeyboardInterrupt:
+        result = {"violation": None, "time": 0.0}
     end_t = time.time()
     print("dnnf")
     if result["violation"] is not None:
