@@ -20,26 +20,27 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
     git \
     python2.7 \
     python2.7-dev \
-    python3.7 \
-    python3.7-dev \
-    python3.7-venv \
+    python3.8 \
+    python3.8-dev \
+    python3.8-venv \
     virtualenv \
-    wget \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 USER dnnf
 WORKDIR /home/dnnf/
 
-ENV MAKEFLAGS="--silent"
+# turn off tensorflow logging
+ENV TF_CPP_MIN_LOG_LEVEL="3"
 
 # load env on interactive shell
 RUN echo "source .venv/bin/activate" >>.bashrc
 
+# copy dnnf to the image
 COPY --chown=dnnf . .
 
-RUN ./install.sh --include-cleverhans --include-foolbox --include-tensorfuzz --python python3.7 \
-    && wget --progress=dot:giga http://cs.virginia.edu/~dls2fc/dnnf_benchmarks.tar.gz \
-    && tar xf dnnf_benchmarks.tar.gz \
-    && rm -f dnnf_benchmarks.tar.gz \
+# install dnnf and benchmarks
+RUN echo | ./install.sh --include-cleverhans --include-foolbox --include-tensorfuzz --python python3.8 \
+    && git clone https://github.com/dlshriver/dnnv-benchmarks.git \
+    && ln -s /home/dnnf/dnnv-benchmarks/benchmarks artifacts \
     && rm -rf .cache

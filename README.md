@@ -34,10 +34,10 @@ To install the cleverhans or foolbox backends, run the above command with the op
 The required dependencies to install DNNF from source are:
 
 - python3
-
-The optional tensorfuzz backend also requires:
-
 - git
+
+The additional, optional tensorfuzz backend also requires:
+
 - python2.7
 - virtualenv
 
@@ -48,7 +48,7 @@ For example, on a fresh Ubuntu 20.04 system, the dependencies can be installed u
 ```bash
   $ sudo add-apt-repository ppa:deadsnakes/ppa
   $ sudo apt-get update
-  $ sudo apt-get install git python2.7 python3.7 virtualenv
+  $ sudo apt-get install git python3.8 # python2.7 virtualenv
 ```
 
 To install DNNF in the local directory, download this repo and run the provided installation script,
