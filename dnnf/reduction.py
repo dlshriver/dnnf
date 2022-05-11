@@ -654,7 +654,7 @@ class HPolyReduction(Reduction):
 __all__ = [
     "HPolyProperty",
     "HPolyReduction",
-    "HpolyReductionError",
+    "HPolyReductionError",
     "Property",
     "Reduction",
     "ReductionError",
