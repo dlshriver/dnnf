@@ -194,7 +194,7 @@ class HPolyProperty(Property):
         if np.any(np.isnan(cex)):
             return False
         if np.any(self.input_lower_bounds[0] > cex) or np.any(
-            self.input_upper_bounds < cex
+            self.input_upper_bounds[0] < cex
         ):
             return False
         y = self.op_graph(cex)

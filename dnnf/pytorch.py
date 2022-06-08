@@ -328,8 +328,6 @@ class PytorchConverter(OperationVisitor):
 
         def relu(operation_graph):
             x = operation_graph[operation.x]
-            if operation_graph["relu_approx"]:
-                return F.softplus(x, beta=1)
             return F.relu(x)
 
         return relu

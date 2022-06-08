@@ -1,3 +1,5 @@
+from typing import Optional
+
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -18,10 +20,10 @@ class FalsificationModel:
         self.input_torch_dtype = torch.from_numpy(
             np.ones((1,), dtype=self.input_dtype)
         ).dtype
-        self.model = self.as_pytorch()
+        self.pytorch_model = self.as_pytorch()
 
     def __call__(self, *args, **kwargs):
-        return self.model(*args, **kwargs)
+        return self.pytorch_model(*args, **kwargs)
 
     def __reduce__(self):
         return FalsificationModel, (self.prop,)
@@ -32,7 +34,7 @@ class FalsificationModel:
         assert len(lower_bounds) == 1
         lower_bound = lower_bounds[0]
         return torch.from_numpy(lower_bound.astype(self.input_dtype)).to(
-            self.model.device
+            self.pytorch_model.device
         )
 
     @property
@@ -41,7 +43,7 @@ class FalsificationModel:
         assert len(upper_bounds) == 1
         upper_bound = upper_bounds[0]
         return torch.from_numpy(upper_bound.astype(self.input_dtype)).to(
-            self.model.device
+            self.pytorch_model.device
         )
 
     def as_pytorch(self):
@@ -50,26 +52,28 @@ class FalsificationModel:
     def as_tf(self):
         return self.op_graph.as_tf()
 
-    def loss(self, y):
+    def loss(self, y: torch.Tensor) -> torch.Tensor:
         return F.cross_entropy(
             y.reshape((1, -1)), torch.Tensor([0]).long().to(y.device)
         ) - F.cross_entropy(y.reshape((1, -1)), torch.Tensor([1]).long().to(y.device))
 
-    def project_input(self, x):
+    def project_input(self, x: torch.Tensor) -> torch.Tensor:
         y = x.detach()
         lb = self.input_lower_bound
         ub = self.input_upper_bound
         lb_violations = y < lb
         ub_violations = y > ub
-        y[lb_violations] = lb[lb_violations]
-        y[ub_violations] = ub[ub_violations]
+        _lb = lb[lb_violations]
+        _ub = ub[ub_violations]
+        y[lb_violations] = torch.nextafter(_lb, torch.full_like(_lb, torch.inf))
+        y[ub_violations] = torch.nextafter(_ub, torch.full_like(_ub, -torch.inf))
         return y.detach()
 
-    def sample(self):
+    def sample(self) -> torch.Tensor:
         x = (
             torch.rand(
                 self.input_shape,
-                device=self.model.device,
+                device=self.pytorch_model.device,
                 dtype=self.input_torch_dtype,
             )
             * (self.input_upper_bound - self.input_lower_bound)
@@ -77,7 +81,7 @@ class FalsificationModel:
         )
         return x.detach()
 
-    def step(self, x, y):
+    def step(self, x: torch.Tensor, y: torch.Tensor) -> Optional[torch.Tensor]:
         loss = self.loss(y)
         loss.backward()
         gradients = x.grad
@@ -98,7 +102,7 @@ class FalsificationModel:
             x = x + F.normalize(gradients) * epsilon
         return x.detach()
 
-    def validate(self, x):
+    def validate(self, x: np.ndarray):
         return self.prop.validate_counter_example(x)
 
 

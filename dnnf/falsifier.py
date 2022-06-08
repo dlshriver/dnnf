@@ -130,12 +130,17 @@ async def falsify_model(
             logger.info("RESTART(%s): %d", _dnnf_task_id, start_i)
 
 
-def pgd(model: FalsificationModel, n_steps=100, **kwargs):
+def pgd(
+    model: FalsificationModel,
+    parameters: Dict[str, Any] = {},
+    **kwargs,
+):
     logger = logging.getLogger(__name__)
 
     if kwargs.get("cuda", False):
-        model.model.to("cuda")
+        model.pytorch_model.to("cuda")
     x = model.sample()
+    n_steps = parameters.get("n_steps", 100)
     for step_i in range(n_steps):
         x.requires_grad = True
         y = model(x)
@@ -146,10 +151,53 @@ def pgd(model: FalsificationModel, n_steps=100, **kwargs):
                 logger.info("FOUND COUNTEREXAMPLE")
                 logger.info("FALSIFIED at step %d", step_i)
                 return counter_example
-        x = model.step(x, y)
-        if x is None:
+        _x = model.step(x, y)
+        if _x is None:
             break
-        x = model.project_input(x)
+        x = model.project_input(_x)
+    return None
+
+
+def newton(
+    model: FalsificationModel,
+    parameters: Dict[str, Any] = {},
+    **kwargs,
+):
+    logger = logging.getLogger(__name__)
+    if kwargs.get("cuda", False):
+        model.pytorch_model.to("cuda")
+    lb = model.input_lower_bound
+    ub = model.input_upper_bound
+    lb = torch.nextafter(lb, torch.full_like(lb, torch.inf))
+    ub = torch.nextafter(ub, torch.full_like(ub, -torch.inf))
+    dnn = model.pytorch_model
+    x = torch.rand_like(lb) * (ub - lb) + lb
+    n_steps = parameters.get("n_steps", 50)
+    for step_i in range(n_steps):
+        x.requires_grad = True
+        output: torch.Tensor = dnn(x)
+        y = output.flatten()[0]
+        y.backward()
+        if y <= 1e-16:
+            counter_example = x.cpu().detach().numpy()
+            if model.validate(counter_example):
+                logger.info("FOUND COUNTEREXAMPLE")
+                logger.info("FALSIFIED at step %d", step_i)
+                return counter_example
+        x_grad = x.grad
+        assert x_grad is not None
+        assert isinstance(x_grad, torch.Tensor)
+        _x = x.detach()
+        x = x - y / x_grad
+        if torch.any(torch.isnan(x)):
+            return None
+        lb_violations = x < lb
+        ub_violations = x > ub
+        x[lb_violations] = lb[lb_violations]
+        x[ub_violations] = ub[ub_violations]
+        if torch.allclose(x, _x):
+            return None
+        x = x.detach()
     return None
 
 
@@ -185,7 +233,7 @@ def cleverhans(
         logger.info("FOUND COUNTEREXAMPLE immediately")
         return _x
 
-    pytorch_model = torch.nn.Sequential(normalizer, model.model).eval()
+    pytorch_model = torch.nn.Sequential(normalizer, model.pytorch_model).eval()
 
     device = torch.device("cpu")
     if kwargs.get("cuda", False):
@@ -231,7 +279,9 @@ def foolbox(
         logger.info("FOUND COUNTEREXAMPLE immediately")
         return _x
 
-    pytorch_model = torch.nn.Sequential(normalizer, model.model).eval().to(device)
+    pytorch_model = (
+        torch.nn.Sequential(normalizer, model.pytorch_model).eval().to(device)
+    )
     finput = initial_input.to(device)
     flabel = torch.zeros(1, dtype=torch.int64, device=device)
     fmodel = foolbox_backend.PyTorchModel(pytorch_model, bounds=(0, 1), device=device)
@@ -266,7 +316,7 @@ def tensorfuzz(model: FalsificationModel, **_):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             torch.onnx.export(
-                model.model,
+                model.pytorch_model,
                 lb,
                 model_filename,
                 input_names=["input"],

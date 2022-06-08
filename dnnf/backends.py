@@ -116,7 +116,7 @@ for path in os.environ["PATH"].split(os.pathsep):
 
 
 def get_backend_choices(group_equivalent=False):
-    choices = ["pgd"]
+    choices = ["pgd", "newton"]
     if group_equivalent:
         choices += list(
             ", ".join(f"cleverhans.{c}" for c in b) for b in cleverhans_backend_choices
