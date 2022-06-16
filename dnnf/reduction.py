@@ -24,7 +24,8 @@ from dnnv.properties import (
     Subscript,
     Symbol,
 )
-from dnnv.properties.visitors import ExpressionVisitor
+from dnnv.properties.visitors import DetailsInference
+from scipy.optimize import linprog
 
 
 class ReductionError(Exception):
@@ -74,7 +75,6 @@ class HPolyProperty(Property):
     @classmethod
     def build(
         cls,
-        expr_details: ExpressionDetailsInference,
         input_vars: Sequence[Expression],
         output_vars: Sequence[Expression],
         hpoly: Sequence[np.ndarray],
@@ -86,12 +86,12 @@ class HPolyProperty(Property):
         var_i_map = {v: i for i, v in enumerate(variables)}
         var_offsets = [0]
         for v in variables:
-            var_offsets.append(var_offsets[-1] + np.product(expr_details.shapes[v]))
+            var_offsets.append(var_offsets[-1] + np.product(v.ctx.shapes[v]))
 
         for v in output_vars:
             i = var_i_map[v]
             offset = var_offsets[i]
-            shape = expr_details.shapes[v]
+            shape = v.ctx.shapes[v]
             for idx in np.ndindex(*shape):
                 flat_idx = offset + np.ravel_multi_index(idx, shape)
                 if not np.isneginf(lb[flat_idx]):
@@ -111,7 +111,7 @@ class HPolyProperty(Property):
             i = var_i_map[v]
             offset = var_offsets[i]
             next_offset = var_offsets[i + 1]
-            shape = expr_details.shapes[v]
+            shape = v.ctx.shapes[v]
             lower_bound = lb[offset : next_offset + 1].reshape(shape)
             upper_bound = ub[offset : next_offset + 1].reshape(shape)
             input_lower_bounds.append(lower_bound)
@@ -124,9 +124,15 @@ class HPolyProperty(Property):
 
         input_output_info = {
             "input_names": [str(expr) for expr in input_vars],
-            "input_details": [expr_details[expr] for expr in input_vars],
+            "input_details": [
+                TensorDetails(expr.ctx.shapes[expr], expr.ctx.types[expr])
+                for expr in input_vars
+            ],
             "output_names": [str(expr) for expr in output_vars],
-            "output_details": [expr_details[expr] for expr in output_vars],
+            "output_details": [
+                TensorDetails(expr.ctx.shapes[expr], expr.ctx.types[expr])
+                for expr in output_vars
+            ],
         }
 
         return cls(
@@ -254,146 +260,26 @@ class HPolyProperty(Property):
         return new_op_graph
 
 
-class ExpressionDetailsInference(ExpressionVisitor):
-    def __init__(self, reduction_error: Type[ReductionError] = ReductionError):
-        super().__init__()
-        self.reduction_error = reduction_error
-        # TODO : make types and shapes symbolic so we don't need to order expressions
-        self.shapes: Dict[Expression, Tuple[int, ...]] = {}
-        self.types: Dict[Expression, Union[Type, np.dtype]] = {}
-
-    def __getitem__(self, expression: Expression) -> TensorDetails:
-        return TensorDetails(self.shapes[expression], self.types[expression])
-
-    def visit_Add(self, expression: Add):
-        tmp_array: Optional[np.ndarray] = None
-        for expr in expression:
-            self.visit(expr)
-            shape = self.shapes[expr]
-            dtype = self.types[expr]
-            if tmp_array is None:
-                tmp_array = np.empty(shape, dtype=dtype)
-            else:
-                tmp_array = tmp_array + np.empty(shape, dtype=dtype)
-        if tmp_array is not None:
-            self.shapes[expression] = tuple(tmp_array.shape)
-            self.types[expression] = tmp_array.dtype
-
-    def visit_And(self, expression: And):
-        for expr in sorted(expression, key=lambda e: -len(e.networks)):
-            self.visit(expr)
-
-    def visit_Call(self, expression: Call):
-        if isinstance(expression.function, Network):
-            input_details = expression.function.value.input_details
-            if len(expression.args) != len(input_details):
-                raise self.reduction_error(
-                    "Invalid property:"
-                    f" Not enough inputs for network '{expression.function}'"
-                )
-            if len(expression.kwargs) > 0:
-                raise self.reduction_error(
-                    "Unsupported property:"
-                    " Executing networks with keyword arguments"
-                    " is not currently supported"
-                )
-            for arg, d in zip(expression.args, input_details):
-                if arg in self.shapes:
-                    arg_shape = self.shapes[arg]
-                    assert arg_shape is not None
-                    if any(
-                        i1 != i2 and i2 > 0 for i1, i2 in zip(arg_shape, tuple(d.shape))
-                    ):
-                        raise self.reduction_error(
-                            f"Invalid property: variable with multiple shapes: '{arg}'"
-                        )
-                self.shapes[arg] = tuple(i if i > 0 else 1 for i in d.shape)
-                self.types[arg] = d.dtype
-                self.visit(arg)
-            output_details = expression.function.value.output_details
-            if len(output_details) == 1:
-                self.shapes[expression] = output_details[0].shape
-                self.types[expression] = output_details[0].dtype
-            else:
-                raise RuntimeError(
-                    "Multiple output operations are not currently supported"
-                    " by this method."
-                    " If you encounter this error, please open an issue on GitHub."
-                )
-        else:
-            raise self.reduction_error(
-                "Unsupported property:"
-                f" Function {expression.function} is not currently supported"
-            )
-
-    def visit_Constant(self, expression: Constant):
-        value = expression.value
-        if isinstance(value, np.ndarray):
-            self.shapes[expression] = value.shape
-            self.types[expression] = value.dtype
-        elif isinstance(value, (list, tuple)):
-            arr = np.asarray(value)
-            self.shapes[expression] = arr.shape
-            self.types[expression] = arr.dtype
-        else:
-            self.shapes[expression] = ()
-            self.types[expression] = type(value)
-
-    def visit_Multiply(self, expression: Multiply):
-        tmp_array: Optional[np.ndarray] = None
-        for expr in expression:
-            self.visit(expr)
-            shape = self.shapes[expr]
-            dtype = self.types[expr]
-            if tmp_array is None:
-                tmp_array = np.empty(shape, dtype=dtype)
-            else:
-                tmp_array = tmp_array * np.empty(shape, dtype=dtype)
-        if tmp_array is not None:
-            self.shapes[expression] = tuple(tmp_array.shape)
-            self.types[expression] = tmp_array.dtype
-
-    def visit_Or(self, expression: Or):
-        for expr in sorted(expression, key=lambda e: -len(e.networks)):
-            self.visit(expr)
-
-    def visit_Subscript(self, expression: Subscript):
-        self.visit(expression.expr)
-        if not expression.index.is_concrete:
-            return
-        index = expression.index.value
-        expr_shape = self.shapes[expression.expr]
-        for i, d in zip(index, expr_shape):
-            if not isinstance(i, slice) and i >= d:
-                raise self.reduction_error(f"Index out of bounds: {expression}")
-        self.shapes[expression] = tuple(np.empty(expr_shape)[index].shape)
-        self.types[expression] = self.types[expression.expr]
-
-
 class HPolyPropertyBuilder:
     def __init__(
         self,
-        expr_details: ExpressionDetailsInference,
         input_vars: List[Symbol],
         output_vars: List[Expression],
     ):
-        self.expr_details = expr_details
         self.input_vars = input_vars
         self.output_vars = output_vars
-        self.variables = self.output_vars + self.input_vars
+        self.variables: List[Expression] = self.output_vars + self.input_vars
         self.var_i_map = {v: i for i, v in enumerate(self.variables)}
         self.var_offsets = [0]
         for v in self.variables:
-            self.var_offsets.append(
-                self.var_offsets[-1] + np.product(self.expr_details.shapes[v])
-            )
+            self.var_offsets.append(self.var_offsets[-1] + np.product(v.ctx.shapes[v]))
 
         num_input_vars = 0
         for x in input_vars:
-            num_input_vars += np.product(self.expr_details.shapes[x])
+            num_input_vars += np.product(x.ctx.shapes[x])
         num_output_vars = 0
         for y in output_vars:
-            num_output_vars += np.product(self.expr_details.shapes[y])
+            num_output_vars += np.product(y.ctx.shapes[y])
         self.num_input_vars = num_input_vars
         self.num_output_vars = num_output_vars
         self.num_vars = num_input_vars + num_output_vars
@@ -408,7 +294,7 @@ class HPolyPropertyBuilder:
             ],
         ] = {}
         for v in self.variables:
-            shape = self.expr_details.shapes[v]
+            shape = v.ctx.shapes[v]
             assert shape is not None
             assert isinstance(shape, tuple)
             var_ids = np.full(shape, self.var_i_map[v])
@@ -429,15 +315,17 @@ class HPolyPropertyBuilder:
         if len(variables) > 1:
             hs = np.zeros((1, self.num_vars + 1))
             for v, i, c in zip(variables, indices, coeffs):
+                variable = self.variables[variables[v]]
                 flat_index = self.var_offsets[v] + np.ravel_multi_index(
-                    i, self.expr_details.shapes[self.variables[variables[v]]]
+                    i, variable.ctx.shapes[variable]
                 )
                 hs[0, flat_index] = c
             hs[0, self.num_vars] = b
             self.hpoly_constraints.append(hs)
         else:
+            variable = self.variables[variables[0]]
             flat_index = self.var_offsets[variables[0]] + np.ravel_multi_index(
-                indices[0], self.expr_details.shapes[self.variables[variables[0]]]
+                indices[0], variable.ctx.shapes[variable]
             )
             coeff = coeffs[0]
             if coeff > 0:
@@ -448,8 +336,23 @@ class HPolyPropertyBuilder:
                 self.interval_constraints[0][flat_index] = max(b / coeff, current_bound)
 
     def build(self) -> HPolyProperty:
+        Ab = np.vstack(self.hpoly_constraints)
+        A = Ab[..., :-1]
+        b = Ab[..., -1:]
+        bounds = tuple(zip(*self.interval_constraints))
+        for i in range(self.num_vars):
+            c = np.zeros(self.num_vars)
+            c[i] = 1
+            result = linprog(c, A, b, bounds=bounds, method="highs")
+            if result.success:
+                current_bound = self.interval_constraints[0][i]
+                self.interval_constraints[0][i] = max(result.x[i], current_bound)
+            c[i] = -1
+            result = linprog(c, A, b, bounds=bounds, method="highs")
+            if result.success:
+                current_bound = self.interval_constraints[1][i]
+                self.interval_constraints[1][i] = min(result.x[i], current_bound)
         return HPolyProperty.build(
-            self.expr_details,
             self.input_vars,
             self.output_vars,
             self.hpoly_constraints,
@@ -467,9 +370,6 @@ class HPolyReduction(Reduction):
         super().__init__(reduction_error=reduction_error)
         self.logger = logging.getLogger(__name__)
         self.negate = negate
-        self.expression_details = ExpressionDetailsInference(
-            reduction_error=reduction_error
-        )
         self._property_builder: Optional[HPolyPropertyBuilder] = None
 
     def reduce_property(self, phi: Expression) -> Iterator[HPolyProperty]:
@@ -485,13 +385,7 @@ class HPolyReduction(Reduction):
             expr = ~expr
         canonical_expr = expr.canonical()
         assert isinstance(canonical_expr, Or)
-
-        self.expression_details.visit(canonical_expr)
-        for expr, shape in self.expression_details.shapes.items():
-            if shape is None:
-                raise self.reduction_error(
-                    f"Unable to infer shape for expression: {expr}"
-                )
+        DetailsInference().visit(canonical_expr)
 
         for disjunct in canonical_expr:
             self.logger.debug("DISJUNCT: %s", disjunct)
@@ -502,12 +396,12 @@ class HPolyReduction(Reduction):
                     for expr in disjunct.iter()
                     if isinstance(expr, Call)
                     and isinstance(expr.function, Network)
-                    and expr in self.expression_details.shapes
+                    and expr in expr.ctx.shapes
                 )
             )
 
             self._property_builder = HPolyPropertyBuilder(
-                self.expression_details, list(input_variables), output_variables
+                list(input_variables), output_variables
             )
             self.visit(disjunct)
             prop = self._property_builder.build()
@@ -555,8 +449,8 @@ class HPolyReduction(Reduction):
         assert coeff is not None
         assert variable is not None
         assert self._property_builder is not None
-        coeff_shape = self.expression_details.shapes[coeff]
-        variable_shape = self.expression_details.shapes[variable]
+        coeff_shape = expression.ctx.shapes[coeff]
+        variable_shape = expression.ctx.shapes[variable]
         coeff_value = np.full(coeff_shape, coeff.value)
         if coeff_shape != variable_shape:
             try:
@@ -591,7 +485,7 @@ class HPolyReduction(Reduction):
             self.visit(expr)
 
     def visit_Call(self, expression: Call):
-        if expression not in self.expression_details.shapes:
+        if expression not in expression.ctx.shapes:
             raise self.reduction_error(f"Unknown shape for expression: {expression}")
 
     def visit_Constant(self, expression: Constant):
@@ -603,8 +497,8 @@ class HPolyReduction(Reduction):
 
         lhs = expression.expr1
         rhs = expression.expr2
-        lhs_shape = self.expression_details.shapes[lhs]
-        rhs_shape = self.expression_details.shapes[rhs]
+        lhs_shape = expression.ctx.shapes[lhs]
+        rhs_shape = expression.ctx.shapes[rhs]
 
         assert self._property_builder is not None
         lhs_vars, lhs_indices = self._property_builder.var_indices[lhs]
