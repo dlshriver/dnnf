@@ -435,7 +435,7 @@ class PytorchConverter(OperationVisitor):
 
         def split(operation_graph):
             x = operation_graph[operation.x]
-            result = torch.split(x, operation.split, operation.axis)
+            result = torch.split(x, tuple(operation.split), operation.axis)
             return result
 
         return split
