@@ -221,6 +221,7 @@ class HPolyProperty(Property):
 
         output_shape = self.op_graph.output_shape[0]
         axis = (0, 0, 1)[len(output_shape)]
+        # axis = 0
         if len(self.op_graph.output_operations) == 1:
             new_output_op = self.op_graph.output_operations[0]
         else:

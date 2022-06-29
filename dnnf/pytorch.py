@@ -4,6 +4,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from dnnv.nn import Operation, OperationGraph, OperationVisitor, operations
+from .utils import ONNX_TO_TORCH_DTYPE
 
 
 def convert(op_graph: OperationGraph) -> PytorchModel:
@@ -230,14 +231,25 @@ class PytorchConverter(OperationVisitor):
 
         return flatten
 
+    # def visit_Gather(self, operation: operations.Gather):
+    #     self.generic_visit(operation)
+
+    #     def gather(operation_graph):
+    #         x = torch.as_tensor(operation_graph[operation.x])
+    #         axis = int(operation.axis)
+    #         indices = torch.as_tensor(operation_graph[operation.indices])
+    #         result = torch.gather(x, axis, indices)
+    #         return result
+
+    #     return gather
     def visit_Gather(self, operation: operations.Gather):
         self.generic_visit(operation)
 
         def gather(operation_graph):
             x = torch.as_tensor(operation_graph[operation.x])
-            axis = int(operation.axis)
-            indices = torch.as_tensor(operation_graph[operation.indices])
-            result = torch.gather(x, axis, indices)
+            indices = [slice(None)] * x.ndim
+            indices[operation.axis] = operation.indices
+            result = x[indices]
             return result
 
         return gather
@@ -407,12 +419,12 @@ class PytorchConverter(OperationVisitor):
     def visit_Sub(self, operation: operations.Sub):
         self.generic_visit(operation)
 
-        def add(operation_graph):
+        def sub(operation_graph):
             a = operation_graph[operation.a]
             b = operation_graph[operation.b]
             return a - b
 
-        return add
+        return sub
 
     def visit_Tanh(self, operation: operations.Tanh):
         self.generic_visit(operation)
@@ -445,5 +457,90 @@ class PytorchConverter(OperationVisitor):
 
         return unsqueeze
 
+    def visit_Upsample(self, operation: operations.Upsample):
+        self.generic_visit(operation)
+
+        def upsample(operation_graph):
+            x = operation_graph[operation.x]
+            scales = operation.scales.tolist()
+            mode = operation.mode
+            result = torch.nn.Upsample(scale_factor=tuple(scales[2:]), mode=mode)(x)
+            # result = F.interpolate(x, scale_factor=scales, mode=mode)
+            return result
+
+        return upsample
+
+    def visit_Div(self, operation: operations.Div):
+        self.generic_visit(operation)
+
+        def div(operation_graph):
+            a = operation_graph[operation.a]
+            b = operation_graph[operation.b]
+            result = torch.div(a, b)
+            return result
+
+        return div
+
+    def visit_Squeeze(self, operation: operations.Squeeze):
+        self.generic_visit(operation)
+
+        def squeeze(operation_graph):
+            x = operation_graph[operation.x]
+            axes = operation.axes
+            if axes is None:
+                result = torch.squeeze(x)
+            else:
+                result = torch.squeeze(x, dim=axes)
+            return result
+
+        return squeeze
+
+    def visit_Expand(self, operation: operations.Expand):
+        self.generic_visit(operation)
+
+        def expand(operation_graph):
+            x = operation_graph[operation.x]
+            shape = operation_graph[operation.shape]
+            result = x.expand(shape)
+            return result
+
+        return expand
+
+    def visit_Clip(self, operation: operations.Clip):
+        self.generic_visit(operation)
+
+        def clip(operation_graph):
+            x = operation_graph[operation.x]
+            _min = operation.min
+            _max = operation.max
+            result = torch.clip(x, _min, _max)
+            return result
+
+        return clip
+
+    def visit_ReduceL2(self, operation: operations.ReduceL2):
+        self.generic_visit(operation)
+
+        def reducel2(operation_graph):
+            x = operation_graph[operation.x]
+            axes = operation.axes
+            keepdims = operation.keepdims
+            result = torch.norm(x, p=2, dim=axes, keepdim=bool(keepdims))
+            return result
+
+        return reducel2
+
+    def visit_Cast(self, operation: operations.Cast):
+        self.generic_visit(operation)
+
+        def cast(operation_graph):
+            x = operation_graph[operation.x]
+            # x = [operation_graph[x_] for x_ in operation.x]
+            # if len(x) == 1:
+            #     result = x[0].type(ONNX_TO_TORCH_DTYPE[operation.to])
+            result = x.type(ONNX_TO_TORCH_DTYPE[operation.to])
+            return result
+
+        return cast
 
 __all__ = ["convert", "PytorchConverter"]
