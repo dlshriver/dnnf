@@ -231,17 +231,6 @@ class PytorchConverter(OperationVisitor):
 
         return flatten
 
-    # def visit_Gather(self, operation: operations.Gather):
-    #     self.generic_visit(operation)
-
-    #     def gather(operation_graph):
-    #         x = torch.as_tensor(operation_graph[operation.x])
-    #         axis = int(operation.axis)
-    #         indices = torch.as_tensor(operation_graph[operation.indices])
-    #         result = torch.gather(x, axis, indices)
-    #         return result
-
-    #     return gather
     def visit_Gather(self, operation: operations.Gather):
         self.generic_visit(operation)
 
@@ -465,7 +454,6 @@ class PytorchConverter(OperationVisitor):
             scales = operation.scales.tolist()
             mode = operation.mode
             result = torch.nn.Upsample(scale_factor=tuple(scales[2:]), mode=mode)(x)
-            # result = F.interpolate(x, scale_factor=scales, mode=mode)
             return result
 
         return upsample
@@ -535,12 +523,10 @@ class PytorchConverter(OperationVisitor):
 
         def cast(operation_graph):
             x = operation_graph[operation.x]
-            # x = [operation_graph[x_] for x_ in operation.x]
-            # if len(x) == 1:
-            #     result = x[0].type(ONNX_TO_TORCH_DTYPE[operation.to])
             result = x.type(ONNX_TO_TORCH_DTYPE[operation.to])
             return result
 
         return cast
+
 
 __all__ = ["convert", "PytorchConverter"]

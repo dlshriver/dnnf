@@ -18,14 +18,11 @@ ONNX_TO_TORCH_DTYPE = {
     onnx.TensorProto.INT32: torch.int32,
     onnx.TensorProto.INT64: torch.int64,
     onnx.TensorProto.UINT8: torch.uint8,
-    # onnx.TensorProto.UINT16: torch.uint16,
-    # onnx.TensorProto.UINT32: torch.uint32,
-    # onnx.TensorProto.UINT64: torch.uint64,
     onnx.TensorProto.BOOL: torch.bool,
     onnx.TensorProto.COMPLEX64: torch.complex64,
     onnx.TensorProto.COMPLEX128: torch.complex128,
-    # onnx.TensorProto.STRING: torch.string,
 }
+
 
 def set_random_seed(seed: Optional[int]) -> None:
     random.seed(seed)
