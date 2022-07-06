@@ -220,6 +220,7 @@ class HPolyProperty(Property):
         import dnnv.nn.operations as operations
 
         output_shape = self.op_graph.output_shape[0]
+        # axis = 0
         axis = (0, 0, 1)[len(output_shape)]
         if len(self.op_graph.output_operations) == 1:
             new_output_op = self.op_graph.output_operations[0]
@@ -336,22 +337,23 @@ class HPolyPropertyBuilder:
                 self.interval_constraints[0][flat_index] = max(b / coeff, current_bound)
 
     def build(self) -> HPolyProperty:
-        Ab = np.vstack(self.hpoly_constraints)
-        A = Ab[..., :-1]
-        b = Ab[..., -1:]
-        bounds = tuple(zip(*self.interval_constraints))
-        for i in range(self.num_vars):
-            c = np.zeros(self.num_vars)
-            c[i] = 1
-            result = linprog(c, A, b, bounds=bounds, method="highs")
-            if result.success:
-                current_bound = self.interval_constraints[0][i]
-                self.interval_constraints[0][i] = max(result.x[i], current_bound)
-            c[i] = -1
-            result = linprog(c, A, b, bounds=bounds, method="highs")
-            if result.success:
-                current_bound = self.interval_constraints[1][i]
-                self.interval_constraints[1][i] = min(result.x[i], current_bound)
+        if self.hpoly_constraints:
+            Ab = np.vstack(self.hpoly_constraints)
+            A = Ab[..., :-1]
+            b = Ab[..., -1:]
+            bounds = tuple(zip(*self.interval_constraints))
+            for i in range(self.num_vars):
+                c = np.zeros(self.num_vars)
+                c[i] = 1
+                result = linprog(c, A, b, bounds=bounds, method="highs")
+                if result.success:
+                    current_bound = self.interval_constraints[0][i]
+                    self.interval_constraints[0][i] = max(result.x[i], current_bound)
+                c[i] = -1
+                result = linprog(c, A, b, bounds=bounds, method="highs")
+                if result.success:
+                    current_bound = self.interval_constraints[1][i]
+                    self.interval_constraints[1][i] = min(result.x[i], current_bound)
         return HPolyProperty.build(
             self.input_vars,
             self.output_vars,
