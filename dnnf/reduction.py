@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple, Type, Union
 
 import numpy as np
-from dnnv.nn import operations, OperationGraph, OperationTransformer
+from dnnv.nn import OperationGraph, OperationTransformer, operations
 from dnnv.nn.utils import TensorDetails
 from dnnv.properties import (
     Add,
