@@ -334,22 +334,23 @@ class HPolyPropertyBuilder:
                 self.interval_constraints[0][flat_index] = max(b / coeff, current_bound)
 
     def build(self) -> HPolyProperty:
-        Ab = np.vstack(self.hpoly_constraints)
-        A = Ab[..., :-1]
-        b = Ab[..., -1:]
-        bounds = tuple(zip(*self.interval_constraints))
-        for i in range(self.num_vars):
-            c = np.zeros(self.num_vars)
-            c[i] = 1
-            result = linprog(c, A, b, bounds=bounds, method="highs")
-            if result.success:
-                current_bound = self.interval_constraints[0][i]
-                self.interval_constraints[0][i] = max(result.x[i], current_bound)
-            c[i] = -1
-            result = linprog(c, A, b, bounds=bounds, method="highs")
-            if result.success:
-                current_bound = self.interval_constraints[1][i]
-                self.interval_constraints[1][i] = min(result.x[i], current_bound)
+        if self.hpoly_constraints:
+            Ab = np.vstack(self.hpoly_constraints)
+            A: np.ndarray = Ab[..., :-1]
+            b: np.ndarray = Ab[..., -1:]
+            bounds = tuple(zip(*self.interval_constraints))
+            for i in np.flatnonzero(abs(A).sum(0)):
+                c = np.zeros(self.num_vars)
+                c[i] = 1
+                result = linprog(c, A, b, bounds=bounds, method="highs")
+                if result.success:
+                    current_bound = self.interval_constraints[0][i]
+                    self.interval_constraints[0][i] = max(result.x[i], current_bound)
+                c[i] = -1
+                result = linprog(c, A, b, bounds=bounds, method="highs")
+                if result.success:
+                    current_bound = self.interval_constraints[1][i]
+                    self.interval_constraints[1][i] = min(result.x[i], current_bound)
         return HPolyProperty.build(
             self.input_vars,
             self.output_vars,
