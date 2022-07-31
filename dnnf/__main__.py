@@ -27,14 +27,13 @@ def main(
 
     phi = parse_property(property_path, format=prop_format, args=extra_args)
     print("Falsifying:", phi)
+    print()
     for name, network in networks.items():
         dnn = parse_network(network, net_format="onnx")
-        if kwargs["debug"]:
-            print(f"Network {name}:")
-            dnn.pprint()
-            print()
+        print(f"Network {name}:")
+        dnn.pprint()
+        print()
         phi.concretize(**{name: dnn})
-    print()
 
     if extra_args is not None and len(extra_args) > 0:
         logger.error("Unused arguments: %r", extra_args)

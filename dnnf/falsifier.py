@@ -66,6 +66,7 @@ def falsify(
         method = globals()[method_name]
         parameters: Dict[str, Any] = backend_parameters.get(backend_method, {})
         method_n_starts = parameters.pop("n_starts", n_starts)
+        logger.debug("Reducing expression.")
         for i, prop in enumerate(reduction.reduce_property(phi)):
             logger.debug("subproblem %s_%d", backend_method, i)
             tasks.append(
@@ -79,6 +80,7 @@ def falsify(
                     **kwargs,
                 )
             )
+        logger.debug("Finished reduction")
     logger.info("Starting Falsifier")
     start_t = time.time()
     try:

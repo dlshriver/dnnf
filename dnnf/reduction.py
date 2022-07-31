@@ -6,7 +6,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple, Type, Union
 
 import numpy as np
-from dnnv.nn import OperationGraph, OperationTransformer
+from dnnv.nn import operations, OperationGraph, OperationTransformer
 from dnnv.nn.utils import TensorDetails
 from dnnv.properties import (
     Add,
@@ -217,8 +217,6 @@ class HPolyProperty(Property):
         return True
 
     def suffixed_op_graph(self) -> OperationGraph:
-        import dnnv.nn.operations as operations
-
         output_shape = self.op_graph.output_shape[0]
         axis = (0, 0, 1)[len(output_shape)]
         if len(self.op_graph.output_operations) == 1:
@@ -383,10 +381,12 @@ class HPolyReduction(Reduction):
             expr = expr.expression
         if self.negate:
             expr = ~expr
+        self.logger.debug("Converting expression to canonical DNF.")
         canonical_expr = expr.canonical()
         assert isinstance(canonical_expr, Or)
+        self.logger.debug("Running shape and type inference on expression.")
         DetailsInference().visit(canonical_expr)
-
+        self.logger.debug("Reducing disjuncts.")
         for disjunct in canonical_expr:
             self.logger.debug("DISJUNCT: %s", disjunct)
             input_variables = disjunct.variables
