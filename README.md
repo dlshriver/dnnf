@@ -1,6 +1,6 @@
 # Reducing DNN Properties to Enable Falsification with Adversarial Attacks
 
-This repo accompanies the paper [Reducing DNN Properties to Enable Falsification with Adversarial Attacks](https://davidshriver.me/files/publications/ICSE21-DNNF.pdf), and provides a tool for running falsification methods such as adversarial attacks on DNN property specifications specified using the [DNNP](https://dnnv.readthedocs.io/en/latest/usage/specifying_properties.html) language of [DNNV](https://github.com/dlshriver/DNNV). For an overview of our paper, check out our [video presentation](https://youtu.be/hcQFYUFwp_U).
+This repo accompanies the paper [Reducing DNN Properties to Enable Falsification with Adversarial Attacks](https://dlshriver.github.io/assets/files/publications/ICSE21-DNNF.pdf), and provides a tool for running falsification methods such as adversarial attacks on DNN property specifications specified using the [DNNP](https://dnnv.readthedocs.io/en/latest/usage/specifying_properties.html) language of [DNNV](https://github.com/dlshriver/DNNV). For an overview of our paper, check out our [video presentation](https://youtu.be/hcQFYUFwp_U).
 
 Additional documentation can be found on [Read the Docs](https://dnnf.readthedocs.io/).
 
@@ -16,7 +16,10 @@ DNNF can be installed using pip by running:
   $ pip install dnnf
 ```
 
-This will install the latest release of DNNF on [PyPI](https://pypi.org/project/dnnf/). To install the most recent changes from GitHub, run:
+This will install the latest release of DNNF on [PyPI](https://pypi.org/project/dnnf/).
+To install the optional falsification backends, you can replace `dnnf` in the above command with `dnnf[BACKENDS]`, 
+where `BACKENDS` is a comma separated list of the backends you wish to include (i.e., `cleverhans` or `foolbox`).
+To install the most recent changes from GitHub, run:
 
 ```bash
   $ pip install git+https://github.com/dlshriver/dnnf.git@main
@@ -31,10 +34,10 @@ To install the cleverhans or foolbox backends, run the above command with the op
 The required dependencies to install DNNF from source are:
 
 - python3
-
-The optional tensorfuzz backend also requires:
-
 - git
+
+The additional, optional tensorfuzz backend also requires:
+
 - python2.7
 - virtualenv
 
@@ -45,7 +48,7 @@ For example, on a fresh Ubuntu 20.04 system, the dependencies can be installed u
 ```bash
   $ sudo add-apt-repository ppa:deadsnakes/ppa
   $ sudo apt-get update
-  $ sudo apt-get install git python2.7 python3.7 virtualenv
+  $ sudo apt-get install git python3.8 # python2.7 virtualenv
 ```
 
 To install DNNF in the local directory, download this repo and run the provided installation script,

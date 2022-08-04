@@ -12,7 +12,7 @@ requires-python = ">=3.7"
 dynamic = ["version", 'description']
 keywords = ["DNN", "neural network", "falsification"]
 dependencies = [
-    "dnnv~=0.5.0",
+    "dnnv~=0.6.0",
     "numpy>=1.20,<1.22",
     "onnx>=1.8,<1.11",
     "scipy~=1.7",
@@ -21,10 +21,26 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+all = [
+    # cleverhans
+    "cleverhans~=4.0",
+    # foolbox
+    "foolbox~=3.3",
+    # dev
+    "black~=22.3",
+    "isort~=5.10",
+    "mypy~=0.950",
+    # docs
+    "sphinx~=4.5",
+    "furo~=2022.4",
+    # test
+    "coverage~=5.5",
+    "pytest~=6.2",
+]
 cleverhans = ["cleverhans~=4.0"]
 foolbox = ["foolbox~=3.3"]
-dev = ["black~=21.7b0", "mypy~=0.910"]
-docs = ["sphinx~=4.0", "furo"]
+dev = ["black~=22.3", "isort~=5.10", "mypy~=0.950"]
+docs = ["sphinx~=4.5", "furo~=2022.4"]
 test = ["coverage~=5.5", "pytest~=6.2"]
 
 [project.urls]
@@ -39,3 +55,15 @@ branch = true
 concurrency = ["multiprocessing", "thread"]
 parallel = true
 source = ["dnnf"]
+
+[tool.isort]
+profile = "black"
+src_paths = ["dnnf", "test"]
+
+[tool.pylint.typecheck]
+generated-members = ["numpy.*", "torch.*"]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "--ff --verbose --import-mode=importlib"
+testpaths = ["tests"]

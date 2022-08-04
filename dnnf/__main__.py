@@ -1,65 +1,49 @@
 """
 """
+import logging
 import sys
-
-import numpy as np
-import os
 import time
-
-from dnnv.nn import parse as parse_network
-from dnnv.properties import parse as parse_property
 from pathlib import Path
 from typing import Dict, List, Optional
+
+import numpy as np
+from dnnv.nn import parse as parse_network
+from dnnv.properties import parse as parse_property
 
 from .cli import parse_args
 from .falsifier import falsify
 from .utils import initialize_logging, set_random_seed
 
-from dnnv.nn.graph import OperationGraph
-from dnnv.nn.utils import TensorDetails
-
-orig_input_details = OperationGraph.input_details
-
-
-@property
-def new_input_details(self):
-    if self._input_details is None:
-        _input_details = orig_input_details.fget(self)
-        self._input_details = tuple(
-            TensorDetails(tuple(i if i >= 0 else 1 for i in d.shape), d.dtype)
-            for d in _input_details
-        )
-    return self._input_details
-
-
-OperationGraph.input_details = new_input_details
-
 
 def main(
-    property: Path,
+    property_path: Path,
     networks: Dict[str, Path],
     prop_format: Optional[str] = None,
     save_violation: Optional[Path] = None,
     extra_args: Optional[List[str]] = None,
     **kwargs,
 ):
-    # os.setpgrp()
-    sys.setrecursionlimit(5000)
-    phi = parse_property(property, format=prop_format, args=extra_args)
-    print("FALSIFYING:", phi)
-    for name, network in networks.items():
-        print(f"PARSING NETWORK: {network.__str__()}")
-        dnn = parse_network(network, net_format="onnx")
-        if kwargs["debug"]:
-            print(f"Network {name}:")
-            dnn.pprint()
-            print()
-        print(f"CONCRETIZING: {phi}")
-        phi.concretize(**{name: dnn})
+    logger = logging.getLogger(__name__)
+
+    phi = parse_property(property_path, format=prop_format, args=extra_args)
+    print("Falsifying:", phi)
     print()
-    print(f"FALSIFYING...")
+    for name, network in networks.items():
+        dnn = parse_network(network, net_format="onnx")
+        print(f"Network {name}:")
+        dnn.pprint()
+        print()
+        phi.concretize(**{name: dnn})
+
+    if extra_args is not None and len(extra_args) > 0:
+        logger.error("Unused arguments: %r", extra_args)
+        sys.exit(1)
+
     start_t = time.time()
-    result = falsify(phi, **kwargs)
+    try:
+        result = falsify(phi, **kwargs)
+    except KeyboardInterrupt:
+        result = {"violation": None, "time": 0.0}
     end_t = time.time()
     print("dnnf")
     if result["violation"] is not None:
@@ -76,12 +60,10 @@ def main(
 def __main__():
     args, extra_args = parse_args()
     set_random_seed(args.seed)
-    logger = initialize_logging(
+    initialize_logging(
         __package__, verbose=args.verbose, quiet=args.quiet, debug=args.debug
     )
-    main(**vars(args), extra_args=extra_args)
-    if extra_args is not None and len(extra_args) > 0:
-        logger.warning("Unused arguments: %r", extra_args)
+    return main(**vars(args), extra_args=extra_args)
 
 
 if __name__ == "__main__":

@@ -1,10 +1,11 @@
 import argparse
-
+import ast
 from collections import defaultdict
 from pathlib import Path
 
-from . import __version__
-from . import backends
+import numpy as np
+
+from . import __version__, backends
 
 
 class LongHelp(argparse.Action):
@@ -25,10 +26,6 @@ class LongHelp(argparse.Action):
 
     def __call__(self, parser, namespace, values, option_string=None):
         parser.print_help()
-        parser.exit()
-
-    def __call__(self, parser, namespace, values, option_string=None):
-        parser.print_help()
         available_backends = "\n  ".join(
             backends.get_backend_choices(group_equivalent=True)
         )
@@ -44,24 +41,16 @@ class HelpFormatter(
         if not action.option_strings:
             (metavar,) = self._metavar_formatter(action, action.dest)(1)
             return metavar
+        parts = []
+        if action.nargs == 0:
+            parts.extend(action.option_strings)
         else:
-            parts = []
-            # if the Optional doesn't take a value, format is:
-            #    -s, --long
-            if action.nargs == 0:
-                parts.extend(action.option_strings)
-
-            # if the Optional takes a value, format is:
-            #    -s ARGS, --long ARGS
-            # change to
-            #    -s, --long ARGS
-            else:
-                default = action.dest.upper()
-                args_string = self._format_args(action, default)
-                for option_string in action.option_strings:
-                    parts.append("%s" % option_string)
-                parts[-1] += " %s" % args_string
-            return ", ".join(parts)
+            default = action.dest.upper()
+            args_string = self._format_args(action, default)
+            for option_string in action.option_strings:
+                parts.append(option_string)
+            parts[-1] += f" {args_string}"
+        return ", ".join(parts)
 
 
 class AddNetwork(argparse.Action):
@@ -107,20 +96,15 @@ def bool_type(parser, name, x):
 
 
 def literal_type(parser, name, x):
-    import ast
-
     if len(x) > 1:
         raise parser.error(f"Too many values for parameter {name}.")
     try:
         return ast.literal_eval(x[0])
-    except:
+    except Exception:
         return x[0]
 
 
 def array_type(parser, name, x):
-    import ast
-    import numpy as np
-
     if len(x) > 1:
         raise parser.error(f"Too many values for parameter {name}.")
     lst = ast.literal_eval(x[0])
@@ -176,7 +160,11 @@ def parse_args():
         "-q", "--quiet", action="store_true", help="suppress non-essential messages"
     )
 
-    parser.add_argument("property", type=Path)
+    parser.add_argument(
+        "property_path",
+        type=Path,
+        help="the path to the property specification to falsify",
+    )
     parser.add_argument(
         "-N",
         "--network",
@@ -217,7 +205,10 @@ def parse_args():
         default=-1,
         type=int,
         dest="n_starts",
-        help="The default number of random starts per sub-property (can be set per backend with --set)",
+        help=(
+            "The default number of random starts per sub-property"
+            " (can be set per backend with --set)"
+        ),
     )
 
     parser.add_argument("--cuda", action="store_true", help="use cuda")
@@ -242,3 +233,6 @@ def parse_args():
 
     known_args, extra_args = parser.parse_known_args()
     return known_args, extra_args
+
+
+__all__ = ["parse_args"]
