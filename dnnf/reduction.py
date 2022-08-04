@@ -142,6 +142,7 @@ class HPolyProperty(Property):
             input_upper_bounds,
             input_ops,
             input_output_info,
+            output_vars,
         )
 
     def __init__(
@@ -152,6 +153,7 @@ class HPolyProperty(Property):
         input_upper_bounds: Sequence[np.ndarray],
         input_ops: Sequence[np.ndarray],
         input_output_info: Dict[str, Any],
+        output_vars: Sequence[Expression],
     ):
         self.op_graph = op_graph
         self.hpoly = hpoly
@@ -159,6 +161,7 @@ class HPolyProperty(Property):
         self.input_upper_bounds = input_upper_bounds
         self.input_ops = input_ops
         self.input_output_info = input_output_info
+        self.output_vars = output_vars
 
     def __repr__(self):
         strs = []
@@ -196,14 +199,17 @@ class HPolyProperty(Property):
             strs.append(" + ".join(hs_str) + f" <= {b}")
         return "\n".join(strs)
 
-    def validate_counter_example(self, cex: np.ndarray) -> bool:
+    def validate_counter_example(self, cex: np.ndarray, other_inputs=None) -> bool:
         if np.any(np.isnan(cex)):
             return False
         if np.any(self.input_lower_bounds[0] > cex) or np.any(
             self.input_upper_bounds[0] < cex
         ):
             return False
-        y = self.op_graph(cex)
+        if other_inputs is not None:
+            y = self.op_graph(cex, *other_inputs)
+        else:
+            y = self.op_graph(cex)
         if isinstance(y, tuple):
             flat_y = np.hstack([y_.flatten() for y_ in y])
         else:
@@ -234,9 +240,11 @@ class HPolyProperty(Property):
                 ]
             new_output_op = operations.Concat(output_operations, axis=axis)
         if axis == 0:
-            flat_input_ops = [operations.Reshape(o, (-1,)) for o in self.input_ops]
+            flat_input_ops = [operations.Reshape(o, (-1,)) for o in self.input_ops[:1]]
         else:
-            flat_input_ops = [operations.Flatten(o, axis=axis) for o in self.input_ops]
+            flat_input_ops = [
+                operations.Flatten(o, axis=axis) for o in self.input_ops[:1]
+            ]
         new_output_op = operations.Concat([new_output_op] + flat_input_ops, axis=axis)
         dtype = OperationGraph([new_output_op]).output_details[0].dtype
 
@@ -252,9 +260,7 @@ class HPolyProperty(Property):
         for i in range(k):
             W_mask[i, 0] = 1
         new_output_op = operations.Add(operations.MatMul(new_output_op, W_mask), b_mask)
-        new_op_graph = (
-            OpGraphMerger().merge([OperationGraph([new_output_op])]).simplify()
-        )
+        new_op_graph = OpGraphMerger().merge([OperationGraph([new_output_op])])
         return new_op_graph
 
 
@@ -265,7 +271,7 @@ class HPolyPropertyBuilder:
         output_vars: List[Expression],
     ):
         self.input_vars = input_vars
-        self.output_vars = output_vars
+        self.output_vars = list(set(output_vars))
         self.variables: List[Expression] = self.output_vars + self.input_vars
         self.var_i_map = {v: i for i, v in enumerate(self.variables)}
         self.var_offsets = [0]

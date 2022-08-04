@@ -47,7 +47,7 @@ def main(
     end_t = time.time()
     print("dnnf")
     if result["violation"] is not None:
-        print("  result: sat")
+        print("  result: unsafe")
         if save_violation is not None:
             np.save(save_violation, result["violation"])
     else:

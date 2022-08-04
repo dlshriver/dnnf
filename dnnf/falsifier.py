@@ -29,6 +29,18 @@ def _initializer():
     )
 
 
+def get_concrete_inputs(output_vars, kwargs):
+    outvars = []
+    for y in output_vars:
+        for a in y.args:
+            if a.is_concrete:
+                a = torch.from_numpy(a.value)
+                if kwargs.get("cuda", False):
+                    a.to("cuda")
+                outvars.append(a)
+    return tuple(outvars)
+
+
 def falsify(
     phi: Expression,
     backend: Union[str, List[str]] = "pgd",
@@ -40,7 +52,6 @@ def falsify(
     if isinstance(backend, str):
         backend = [backend]
 
-    counter_example = None
     reduction = HPolyReduction()
     executor_params: Dict[str, Any] = {}
     if n_proc == 1:
@@ -114,6 +125,8 @@ async def falsify_model(
 
     start_i = 0
     loop = asyncio.get_event_loop()
+    outvars = get_concrete_inputs(model.prop.output_vars, kwargs)
+    outvars = tuple(i.numpy() for i in outvars)
     while n_starts < 0 or start_i < n_starts:
         counter_example = await loop.run_in_executor(
             executor, partial(method, model, **kwargs)
@@ -122,7 +135,7 @@ async def falsify_model(
             logger.info("FALSIFIED (%s) at restart: %d", _dnnf_task_id, start_i)
             for network, result in zip(
                 model.prop.input_output_info["output_names"],
-                model.prop.op_graph(counter_example),
+                model.prop.op_graph(counter_example, *outvars),
             ):
                 logger.debug("%s -> %s", network, result)
             return counter_example
@@ -142,14 +155,15 @@ def pgd(
     if kwargs.get("cuda", False):
         model.pytorch_model.to("cuda")
     x = model.sample()
+    outvars = get_concrete_inputs(model.prop.output_vars, kwargs)
     n_steps = parameters.get("n_steps", 100)
     for step_i in range(n_steps):
         x.requires_grad = True
-        y = model(x)
+        y = model(x, *outvars)
         flat_y = y.flatten()
         if any(flat_y[0] <= flat_y[i] for i in range(1, len(flat_y))):
             counter_example = x.cpu().detach().numpy()
-            if model.validate(counter_example):
+            if model.validate(counter_example, other_inputs=outvars):
                 logger.info("FOUND COUNTEREXAMPLE")
                 logger.info("FALSIFIED at step %d", step_i)
                 return counter_example
@@ -293,7 +307,6 @@ def foolbox(
         parameters = {}
     attack = getattr(foolbox_backend.attacks, variant)(**parameters)
     _, advs, success = attack(fmodel, finput, flabel, epsilons=epsilons)
-
     for _, adv, _ in zip(success, advs, epsilons):
         counter_example = normalizer(adv).cpu().detach().numpy()
         if model.validate(counter_example):
